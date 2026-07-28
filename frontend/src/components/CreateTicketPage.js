@@ -8,7 +8,7 @@ export default function CreateTicketPage() {
   const { user } = useAuth();
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({
-    title: "", description: "", category: "", priority: "MEDIUM",
+    title: "", description: "", category: "", prioritcodey: "MEDIUM",
     department: user?.department || "",
     is_class_level: user?.role === "CR",
     class_section: user?.section || "",
@@ -82,6 +82,11 @@ export default function CreateTicketPage() {
                     { code: "MEC", name: "Mechanical Engineering" },
                     { code: "ARC", name: "Architecture" },
                     { code: "APP", name: "Applied Sciences" },
+                    { code: "CIT", name: "IT Support" },
+                    { code: "FIN", name: "Finance" },
+                    { code: "ACA", name: "Academic Affairs" },
+                    { code: "LIB", name: "Library" },
+                    { code: "FAC", name: "Facilities" },
                   ].map((d) => (
                     <option key={d.code} value={d.code}>{d.name}</option>
                   ))}

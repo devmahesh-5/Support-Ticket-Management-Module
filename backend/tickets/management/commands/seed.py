@@ -17,53 +17,74 @@ class Command(BaseCommand):
         admin.save()
 
         categories = {
-            'Internet / Network': 'Campus internet, WiFi, network issues',
-            'Hardware / Lab Equipment': 'Lab hardware, projector, printer issues',
+            'Lab Equipment': 'Lab hardware, equipment, projector issues',
+            'Classroom': 'Classroom, teaching aid, whiteboard issues',
+            'Network / Internet': 'Campus internet, WiFi, network issues',
             'Academic': 'Grades, registration, transcripts, exams',
             'Financial / Fees': 'Payments, scholarships, refunds, fees',
-            'Department-specific': 'Department-related issues',
             'Library': 'Library services, book issues',
             'Hostel / Facilities': 'Hostel, accommodation, maintenance',
             'General / Other': 'Other issues',
         }
+        cat_objs = {}
         for name, desc in categories.items():
-            Category.objects.get_or_create(name=name, defaults={'description': desc})
+            c, _ = Category.objects.get_or_create(name=name, defaults={'description': desc})
+            cat_objs[name] = c
 
         users = [
-            ('080bct045', 'Mahesh', 'Bhandari', User.Role.STUDENT, 'COM', 'BCT'),
-            ('080bct001', 'Kushal', 'Gautam', User.Role.STUDENT, 'COM', 'BCT'),
-            ('080bct010', 'Lav Raj', 'Karn', User.Role.CR, 'COM', 'BCT'),
-            ('080bct020', 'Mission', 'Baraily', User.Role.STUDENT, 'COM', 'BCT'),
-            ('hod.computer', 'Dr. Hari', 'Sharma', User.Role.DEPT_ADMIN, 'COM', ''),
-            ('hod.electrical', 'Dr. Rajesh', 'KC', User.Role.DEPT_ADMIN, 'ELE', ''),
-            ('staff.cit1', 'Ram', 'Thapa', User.Role.STAFF, 'COM', ''),
-            ('staff.cit2', 'Sita', 'Poudel', User.Role.STAFF, 'COM', ''),
-            ('staff.ele1', 'Anil', 'Gurung', User.Role.STAFF, 'ELE', ''),
-            ('080bel001', 'Alisha', 'Rai', User.Role.STUDENT, 'ELE', 'BEL'),
+            ('080bct045', 'Mahesh', 'Bhandari', User.Role.STUDENT, 'COM', 'BCT', None),
+            ('080bct001', 'Kushal', 'Gautam', User.Role.STUDENT, 'COM', 'BCT', None),
+            ('080bct010', 'Lav Raj', 'Karn', User.Role.CR, 'COM', 'BCT', None),
+            ('080bct020', 'Mission', 'Baraily', User.Role.STUDENT, 'COM', 'BCT', None),
+            ('080bel001', 'Alisha', 'Rai', User.Role.STUDENT, 'ELE', 'BEL', None),
+            ('hod.computer', 'Dr. Hari', 'Sharma', User.Role.DEPT_ADMIN, 'COM', '', None),
+            ('hod.electrical', 'Dr. Rajesh', 'KC', User.Role.DEPT_ADMIN, 'ELE', '', None),
+            ('hod.cit', 'Sujan', 'Shrestha', User.Role.DEPT_ADMIN, 'CIT', '', None),
+            ('hod.finance', 'Ramesh', 'Adhikari', User.Role.DEPT_ADMIN, 'FIN', '', None),
+            ('hod.academic', 'Prakash', 'Neupane', User.Role.DEPT_ADMIN, 'ACA', '', None),
+            ('hod.library', 'Gita', 'Sharma', User.Role.DEPT_ADMIN, 'LIB', '', None),
+            ('hod.facilities', 'Krishna', 'Thapa', User.Role.DEPT_ADMIN, 'FAC', '', None),
+            ('staff.cit1', 'Ram', 'Thapa', User.Role.STAFF, 'CIT', '', User.StaffType.IT),
+            ('staff.cit2', 'Sita', 'Poudel', User.Role.STAFF, 'CIT', '', User.StaffType.IT),
+            ('staff.com1', 'Anil', 'Gurung', User.Role.STAFF, 'COM', '', User.StaffType.LAB),
+            ('staff.com2', 'Binita', 'Khadka', User.Role.STAFF, 'COM', '', User.StaffType.TEACHER),
+            ('staff.ele1', 'Deepak', 'Rai', User.Role.STAFF, 'ELE', '', User.StaffType.LAB),
+            ('staff.fin1', 'Nita', 'Sharma', User.Role.STAFF, 'FIN', '', User.StaffType.FINANCE),
+            ('staff.aca1', 'Sagar', 'Bhandari', User.Role.STAFF, 'ACA', '', User.StaffType.ACADEMIC),
+            ('staff.lib1', 'Mina', 'Poudel', User.Role.STAFF, 'LIB', '', User.StaffType.LIBRARY),
+            ('staff.fac1', 'Bikram', 'Singh', User.Role.STAFF, 'FAC', '', User.StaffType.FACILITIES),
         ]
 
-        for uname, first, last, role, dept, section in users:
+        for uname, first, last, role, dept, section, staff_type in users:
             u, created = User.objects.get_or_create(username=uname)
             u.first_name = first
             u.last_name = last
             u.role = role
             u.department = dept
+            u.staff_type = staff_type
             u.section = section or None
             u.set_password('pass@123')
             u.save()
 
-        internet = Category.objects.get(name='Internet / Network')
-        academic = Category.objects.get(name='Academic')
-        finance = Category.objects.get(name='Financial / Fees')
-        RoutingRule.objects.get_or_create(category=internet, defaults={
-            'target_department': 'CIT', 'priority': 1, 'is_active': True
-        })
-        RoutingRule.objects.get_or_create(category=academic, defaults={
-            'target_department': 'ACADEMIC', 'priority': 2, 'is_active': True
-        })
-        RoutingRule.objects.get_or_create(category=finance, defaults={
-            'target_department': 'FINANCE', 'priority': 3, 'is_active': True
-        })
+        rules = [
+            (cat_objs['Lab Equipment'],       'SELF', 1),
+            (cat_objs['Classroom'],           'SELF', 2),
+            (cat_objs['Network / Internet'],  'CIT',  3),
+            (cat_objs['Financial / Fees'],    'FIN',  4),
+            (cat_objs['Academic'],            'ACA',  5),
+            (cat_objs['Library'],             'LIB',  6),
+            (cat_objs['Hostel / Facilities'], 'FAC',  7),
+            (cat_objs['General / Other'],     'SELF', 8),
+        ]
+        for category, target_dept, priority in rules:
+            RoutingRule.objects.get_or_create(
+                category=category,
+                defaults={
+                    'target_department': target_dept,
+                    'priority': priority,
+                    'is_active': True,
+                }
+            )
 
         self.stdout.write(self.style.SUCCESS("Seed complete!"))
         self.stdout.write(f"Users: {User.objects.count()}")

@@ -77,7 +77,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         ticket = serializer.save(created_by=self.request.user)
-        if self.request.user.role in [User.Role.CR, User.Role.STUDENT]:
+        if not ticket.department and self.request.user.role in [User.Role.CR, User.Role.STUDENT]:
             ticket.department = self.request.user.department
         ticket.save()
         assign_ticket(ticket)

@@ -21,14 +21,15 @@ class Category(models.Model):
 class RoutingRule(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="routing_rules")
     target_department = models.CharField(max_length=20, choices=[
-        ("CIT", "CIT Team"),
-        ("ACADEMIC", "Academic Section"),
-        ("FINANCE", "Financial Team"),
+        ("SELF", "Ticket's Own Department"),
+        ("CIT", "CIT (IT Support)"),
+        ("FIN", "Finance"),
+        ("ACA", "Academic Affairs"),
+        ("LIB", "Library"),
+        ("FAC", "Facilities"),
         ("HOD", "Respective HOD"),
-        ("LIBRARY", "Library Staff"),
-        ("FACILITIES", "Facilities Team"),
         ("CAMPUS_ADMIN", "Campus Admin"),
-    ], default="CIT")
+    ], default="SELF")
     keyword_match = models.CharField(max_length=200, blank=True, null=True, help_text="Optional keyword for title/desc matching")
     priority = models.IntegerField(default=0, help_text="Lower number = higher priority")
     is_active = models.BooleanField(default=True)

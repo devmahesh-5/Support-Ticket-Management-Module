@@ -4,62 +4,64 @@ from accounts.models import User
 from .models import Ticket
 
 
+CATEGORY_ROUTES = {
+    "Lab Equipment":    {"target_dept": None,   "staff_type": User.StaffType.LAB},
+    "Classroom":        {"target_dept": None,   "staff_type": User.StaffType.TEACHER},
+    "Network / Internet": {"target_dept": "CIT", "staff_type": User.StaffType.IT},
+    "Financial / Fees": {"target_dept": "FIN",  "staff_type": User.StaffType.FINANCE},
+    "Academic":         {"target_dept": "ACA",  "staff_type": User.StaffType.ACADEMIC},
+    "Library":          {"target_dept": "LIB",  "staff_type": User.StaffType.LIBRARY},
+    "Hostel / Facilities": {"target_dept": "FAC", "staff_type": User.StaffType.FACILITIES},
+    "General / Other":  {"target_dept": None,   "staff_type": None},
+}
+
+
 def assign_ticket(ticket):
-    category_name = ticket.category.name.lower() if ticket.category else ""
+    if not ticket.department and not ticket.category:
+        ticket.assigned_to = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
+        ticket.save()
+        return
 
-    dept_mapping = {
-        "internet": "CIT", "network": "CIT", "technical": "CIT",
-        "hardware": "CIT", "lab": "CIT",
-        "academic": "ACADEMIC", "grade": "ACADEMIC", "registration": "ACADEMIC", "exam": "ACADEMIC",
-        "financial": "FINANCE", "fee": "FINANCE", "payment": "FINANCE", "scholarship": "FINANCE",
-        "library": "LIBRARY",
-        "hostel": "FACILITIES", "facility": "FACILITIES",
-    }
+    route = None
+    if ticket.category:
+        route = CATEGORY_ROUTES.get(ticket.category.name)
 
-    target_dept = None
-    for keyword, dept in dept_mapping.items():
-        if keyword in category_name:
-            target_dept = dept
-            break
+    target_dept = ticket.department
+    target_staff_type = None
 
-    if not target_dept and ticket.department:
-        target_dept = "HOD"
+    if route:
+        if route["target_dept"]:
+            target_dept = route["target_dept"]
+        target_staff_type = route["staff_type"]
 
     if not target_dept:
         ticket.assigned_to = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
         ticket.save()
         return
 
-    if target_dept in dept_mapping.values():
-        if ticket.department:
-            available_staff = User.objects.filter(
-                role=User.Role.STAFF, department=ticket.department,
-                is_available=True,
-            ).order_by("id")
-            if available_staff.exists():
-                ticket.assigned_to = available_staff.first()
-            else:
-                hod = User.objects.filter(
-                    role=User.Role.DEPT_ADMIN, department=ticket.department,
-                ).first()
-                ticket.assigned_to = hod
-        else:
-            available_staff = User.objects.filter(
-                role=User.Role.STAFF, is_available=True,
-            ).order_by("id")
-            if available_staff.exists():
-                ticket.assigned_to = available_staff.first()
-            else:
-                admins = User.objects.filter(
-                    role__in=[User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]
-                ).first()
-                ticket.assigned_to = admins
-    else:
-        if ticket.department:
-            hod = User.objects.filter(
-                role=User.Role.DEPT_ADMIN, department=ticket.department,
-            ).first()
-            ticket.assigned_to = hod
+    filters = {
+        "role": User.Role.STAFF,
+        "department": target_dept,
+        "is_available": True,
+    }
+    if target_staff_type:
+        filters["staff_type"] = target_staff_type
+
+    assigned = User.objects.filter(**filters).order_by("id").first()
+
+    if not assigned and target_staff_type:
+        del filters["staff_type"]
+        assigned = User.objects.filter(**filters).order_by("id").first()
+
+    if not assigned:
+        assigned = User.objects.filter(
+            role=User.Role.DEPT_ADMIN, department=target_dept,
+        ).first()
+
+    if not assigned:
+        assigned = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
+
+    ticket.assigned_to = assigned
 
     sla_hours = 24
     if ticket.priority == Ticket.Priority.CRITICAL:

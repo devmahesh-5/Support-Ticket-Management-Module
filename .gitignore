@@ -80,3 +80,6 @@ docker-compose.override.yml
 frontend/build/
 frontend/dist/
 node_modules/
+
+backend/.env
+frontend/.env
