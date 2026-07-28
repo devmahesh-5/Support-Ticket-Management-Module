@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+*.manifest
+*.spec
+
+# Virtual environments
+venv/
+.env/
+.venv/
+env/
+ve/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+*.DS_Store
+
+# Environment & secrets
+.env
+.env.local
+.env.production
+*.pem
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Media / Uploads (user-generated content, not committed)
+media/tickets/
+media/
+
+# Static files (collected by collectstatic, not source)
+staticfiles/
+static_collected/
+static_root/
+
+# Database dumps
+*.sql
+*.dump
+
+# Test & coverage
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+*.coverage
+htmlcov/
+.pytest_cache/
+
+# Lint / type check
+.mypy_cache/
+.ruff_cache/
+.ropeproject/
+
+# Docker
+docker-compose.override.yml
+
+# Project-specific: compiled frontend build artifacts
+frontend/build/
+frontend/dist/
+node_modules/
+
+backend/.env
+frontend/.env
