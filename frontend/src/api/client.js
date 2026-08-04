@@ -27,6 +27,8 @@ export const ticketAPI = {
   escalate: (id) => api.post(`/tickets/${id}/escalate/`),
   stats: () => api.get("/tickets/stats/"),
   dashboard: () => api.get("/tickets/dashboard/"),
+  report: (params) => api.get("/tickets/report/", { params }),
+  exportTickets: (params) => api.get("/tickets/export/", { params, responseType: "blob" }),
 };
 
 export const categoryAPI = {
@@ -36,6 +38,7 @@ export const categoryAPI = {
 export const userAPI = {
   list: () => api.get("/auth/users/"),
   create: (data) => api.post("/auth/users/", data),
+  setAvailability: (data) => api.post("/auth/users/set_availability/", data),
 };
 
 export const notificationAPI = {

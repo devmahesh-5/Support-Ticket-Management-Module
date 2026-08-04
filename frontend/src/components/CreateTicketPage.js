@@ -23,8 +23,25 @@ export default function CreateTicketPage() {
     }).catch(() => {});
   }, []);
 
+  const validForDept = (c) =>
+    !c.target_department || c.target_department === "HOD" || c.target_department === form.department;
+
+  const visibleCategories = form.department
+    ? categories.filter(validForDept)
+    : categories;
+
   const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "department") {
+        const allowed = value ? categories.filter((c) =>
+          !c.target_department || c.target_department === "HOD" || c.target_department === value
+        ) : categories;
+        if (!allowed.some((c) => c.id === prev.category)) next.category = "";
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -57,7 +74,7 @@ export default function CreateTicketPage() {
                 <label className="form-label">Category <span className="text-danger">*</span></label>
                 <select className="form-select" name="category" value={form.category} onChange={handleChange} required>
                   <option value="">Select category...</option>
-                  {categories.map((c) => (
+                  {visibleCategories.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
