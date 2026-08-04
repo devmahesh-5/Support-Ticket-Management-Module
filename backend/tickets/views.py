@@ -2,7 +2,9 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q, Count
+from django_filters.rest_framework import FilterSet, DateFromToRangeFilter
+from django.db.models import Q, Count, Prefetch, F, Avg, Min
+from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
 
@@ -12,9 +14,17 @@ from .serializers import (
     TicketListSerializer, TicketDetailSerializer, TicketCreateSerializer,
     TicketMessageSerializer, StatusLogSerializer,
 )
-from .routing import assign_ticket
+from .routing import assign_ticket, ACTIVE_STATUSES
 from accounts.models import User
 from notifications.models import Notification
+
+
+class TicketFilter(FilterSet):
+    created_at = DateFromToRangeFilter()
+
+    class Meta:
+        model = Ticket
+        fields = ["status", "priority", "category", "department", "is_class_level"]
 
 
 class IsStaffOrAdmin(permissions.BasePermission):
@@ -43,7 +53,7 @@ class RoutingRuleViewSet(viewsets.ModelViewSet):
 
 class TicketViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["status", "priority", "category", "department", "is_class_level"]
+    filterset_class = TicketFilter
     search_fields = ["ticket_id", "title", "description"]
     ordering_fields = ["created_at", "updated_at", "priority", "status"]
 
@@ -56,9 +66,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Ticket.objects.select_related(
-            "category", "created_by", "assigned_to"
-        ).prefetch_related("messages", "status_logs")
+        qs = self._base_queryset()
 
         if user.role == User.Role.CAMPUS_ADMIN:
             return qs
@@ -74,6 +82,22 @@ class TicketViewSet(viewsets.ModelViewSet):
             )
         else:
             return qs.filter(created_by=user)
+
+    def _visible_messages(self):
+        user = getattr(self.request, "user", None)
+        if user and user.is_authenticated and user.role in [
+            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
+        ]:
+            return TicketMessage.objects.all()
+        return TicketMessage.objects.filter(is_internal_note=False)
+
+    def _base_queryset(self):
+        return Ticket.objects.select_related(
+            "category", "created_by", "assigned_to"
+        ).prefetch_related(
+            Prefetch("messages", queryset=self._visible_messages()),
+            "status_logs",
+        )
 
     def perform_create(self, serializer):
         ticket = serializer.save(created_by=self.request.user)
@@ -270,7 +294,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def my_tickets(self, request):
-        tickets = Ticket.objects.filter(created_by=request.user).order_by("-created_at")
+        tickets = self._base_queryset().filter(created_by=request.user).order_by("-created_at")
         page = self.paginate_queryset(tickets)
         if page is not None:
             serializer = TicketListSerializer(page, many=True, context={"request": request})
@@ -282,7 +306,7 @@ class TicketViewSet(viewsets.ModelViewSet):
     def department_tickets(self, request):
         user = request.user
         if user.department:
-            tickets = Ticket.objects.filter(
+            tickets = self._base_queryset().filter(
                 Q(department=user.department) |
                 Q(assigned_to__department=user.department)
             ).order_by("-created_at")
@@ -307,11 +331,18 @@ class TicketViewSet(viewsets.ModelViewSet):
             sla_deadline__lt=timezone.now(),
             status__in=["OPEN", "IN_PROGRESS", "REOPENED"]
         ).count()
-        avg_resolution = qs.filter(
-            status__in=["RESOLVED", "CLOSED"], closed_at__isnull=False
-        ).extra(
-            select={"avg_hours": "EXTRACT(EPOCH FROM AVG(closed_at - created_at))/3600"}
-        ).values("avg_hours").first()
+
+        resolved = qs.filter(status__in=["RESOLVED", "CLOSED"], closed_at__isnull=False)
+        avg_resolution_hours = None
+        duration = resolved.annotate(
+            duration=F("closed_at") - F("created_at")
+        ).aggregate(avg=Avg("duration"))
+        if duration["avg"]:
+            avg_resolution_hours = round(duration["avg"].total_seconds() / 3600, 1)
+
+        deadline_tracked = resolved.filter(sla_deadline__isnull=False)
+        missed_count = deadline_tracked.filter(closed_at__gt=F("sla_deadline")).count()
+        missed_deadline_pct = round(missed_count / deadline_tracked.count() * 100, 1) if deadline_tracked.count() else None
 
         return Response({
             "total": total,
@@ -319,7 +350,8 @@ class TicketViewSet(viewsets.ModelViewSet):
             "by_priority": {p["priority"]: p["count"] for p in by_priority},
             "by_category": {c["category__name"] or "Uncategorized": c["count"] for c in by_category},
             "overdue": overdue,
-            "avg_resolution_hours": round(avg_resolution["avg_hours"], 1) if avg_resolution and avg_resolution.get("avg_hours") else None,
+            "avg_resolution_hours": avg_resolution_hours,
+            "missed_deadline_pct": missed_deadline_pct,
         })
 
     @action(detail=False, methods=["get"])
@@ -359,3 +391,147 @@ class TicketViewSet(viewsets.ModelViewSet):
             "recent": recent_serializer.data,
             "staff_metrics": staff_metrics,
         })
+
+    @staticmethod
+    def _apply_date_range(qs, request):
+        start = request.query_params.get("start")
+        end = request.query_params.get("end")
+        if start:
+            qs = qs.filter(created_at__date__gte=start)
+        if end:
+            qs = qs.filter(created_at__date__lte=end)
+        return qs
+
+    def _staff_metrics(self, qs):
+        user = self.request.user
+        staff_qs = User.objects.filter(role=User.Role.STAFF)
+        if user.role == User.Role.DEPT_ADMIN:
+            staff_qs = staff_qs.filter(department=user.department)
+
+        metrics = []
+        for staff in staff_qs:
+            sqs = qs.filter(assigned_to=staff)
+            handled = sqs.count()
+            open_count = sqs.filter(status__in=ACTIVE_STATUSES).count()
+
+            avg_resp = None
+            resps = sqs.filter(
+                messages__is_internal_note=False,
+            ).exclude(
+                messages__author__role__in=[User.Role.STUDENT, User.Role.CR],
+            ).values("id", "created_at").annotate(fr=Min("messages__created_at"))
+            if resps:
+                secs = sum((r["fr"] - r["created_at"]).total_seconds() for r in resps)
+                avg_resp = round(secs / len(resps) / 3600, 1)
+
+            metrics.append({
+                "name": staff.get_full_name() or staff.username,
+                "department": staff.department,
+                "tickets_handled": handled,
+                "open_tickets": open_count,
+                "avg_response_hours": avg_resp,
+            })
+        return metrics
+
+    @action(detail=False, methods=["get"])
+    def report(self, request):
+        qs = self._apply_date_range(self.get_queryset(), request)
+
+        by_status = {s["status"]: s["count"] for s in qs.values("status").annotate(count=Count("id"))}
+        by_priority = {p["priority"]: p["count"] for p in qs.values("priority").annotate(count=Count("id"))}
+        by_category = {c["category__name"] or "Uncategorized": c["count"] for c in qs.values("category__name").annotate(count=Count("id"))}
+        by_department = {d["department"] or "None": d["count"] for d in qs.values("department").annotate(count=Count("id"))}
+
+        resolved = qs.filter(status__in=["RESOLVED", "CLOSED"], closed_at__isnull=False)
+        overdue = qs.filter(
+            sla_deadline__lt=timezone.now(),
+            status__in=["OPEN", "IN_PROGRESS", "REOPENED"],
+        ).count()
+
+        avg_resolution_hours = None
+        duration = resolved.annotate(
+            duration=F("closed_at") - F("created_at")
+        ).aggregate(avg=Avg("duration"))
+        if duration["avg"]:
+            avg_resolution_hours = round(duration["avg"].total_seconds() / 3600, 1)
+
+        deadline_tracked = resolved.filter(sla_deadline__isnull=False)
+        missed_count = deadline_tracked.filter(closed_at__gt=F("sla_deadline")).count()
+        missed_deadline_pct = round(missed_count / deadline_tracked.count() * 100, 1) if deadline_tracked.count() else None
+
+        weekly = qs.filter(assigned_to__isnull=False).annotate(
+            week=TruncWeek("created_at")
+        ).values("week").annotate(n=Count("id")).order_by("week")
+        weekly = [{"week": str(w["week"].date()), "tickets": w["n"]} for w in weekly]
+
+        return Response({
+            "total": qs.count(),
+            "by_status": by_status,
+            "by_priority": by_priority,
+            "by_category": by_category,
+            "by_department": by_department,
+            "overdue": overdue,
+            "avg_resolution_hours": avg_resolution_hours,
+            "missed_deadline_pct": missed_deadline_pct,
+            "weekly_trend": weekly,
+            "staff_metrics": self._staff_metrics(qs),
+            "start": request.query_params.get("start"),
+            "end": request.query_params.get("end"),
+        })
+
+    @action(detail=False, methods=["get"])
+    def export(self, request):
+        import io
+        from openpyxl import Workbook
+        from django.http import HttpResponse
+
+        qs = self._apply_date_range(self.get_queryset(), request)
+        qs = qs.select_related("category", "created_by", "assigned_to").order_by("-created_at")
+
+        columns = request.query_params.get("columns")
+        all_columns = [
+            "ticket_id", "title", "category", "status", "priority",
+            "department", "created_by", "assigned_to",
+            "created_at", "updated_at", "sla_deadline", "closed_at",
+        ]
+        selected = [c.strip() for c in columns.split(",") if c.strip() in all_columns] if columns else all_columns
+        headers = {
+            "ticket_id": "Ticket ID", "title": "Title", "category": "Category",
+            "status": "Status", "priority": "Priority", "department": "Department",
+            "created_by": "Created By", "assigned_to": "Assigned To",
+            "created_at": "Created At", "updated_at": "Updated At",
+            "sla_deadline": "SLA Deadline", "closed_at": "Closed At",
+        }
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Tickets"
+        ws.append([headers[c] for c in selected])
+
+        for t in qs.iterator(chunk_size=500):
+            row = []
+            for c in selected:
+                if c == "category":
+                    row.append(t.category.name if t.category else "")
+                elif c == "created_by":
+                    row.append(t.created_by.get_full_name() or t.created_by.username)
+                elif c == "assigned_to":
+                    row.append(t.assigned_to.get_full_name() if t.assigned_to else "")
+                elif c in ("created_at", "updated_at", "sla_deadline", "closed_at"):
+                    val = getattr(t, c)
+                    row.append(val.strftime("%Y-%m-%d %H:%M") if val else "")
+                else:
+                    row.append(getattr(t, c))
+            ws.append(row)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        filename = f"tickets_report_{timezone.now().strftime('%Y%m%d')}.xlsx"
+        resp = HttpResponse(
+            buf,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        resp["Content-Disposition"] = 'attachment; filename="' + filename + '"'
+        return resp

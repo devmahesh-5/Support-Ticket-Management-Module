@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { notificationAPI } from "../api/client";
+import { notificationAPI, userAPI } from "../api/client";
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
 
@@ -24,6 +24,13 @@ export default function Navbar() {
   const handleLogout = async () => {
     await logout();
     navigate("/login");
+  };
+
+  const handleToggleAvailability = async () => {
+    try {
+      const res = await userAPI.setAvailability({ is_available: !user.is_available });
+      updateUser({ is_available: res.data.is_available });
+    } catch {}
   };
 
   if (!user) return null;
@@ -68,10 +75,25 @@ export default function Navbar() {
                 <i className="bi bi-person-circle me-1"></i>
                 {user.full_name || user.username}
                 <span className="badge bg-light text-dark ms-2">{roleLabels[user.role] || user.role}</span>
+                {user.role === "STAFF" && (
+                  <span className={`badge ms-1 ${user.is_available ? "bg-success" : "bg-secondary"}`}>
+                    {user.is_available ? "Available" : "Busy"}
+                  </span>
+                )}
               </a>
               <ul className="dropdown-menu dropdown-menu-end">
                 <li><span className="dropdown-item-text small text-muted">{user.email}</span></li>
-                <li><hr className="dropdown-divider" /></li>
+                {user.role === "STAFF" && (
+                  <>
+                    <li>
+                      <button className="dropdown-item" onClick={handleToggleAvailability}>
+                        <i className={`bi bi-${user.is_available ? "hand-index-thumb" : "check-circle"} me-2`}></i>
+                        {user.is_available ? "Set as Busy" : "Set as Available"}
+                      </button>
+                    </li>
+                    <li><hr className="dropdown-divider" /></li>
+                  </>
+                )}
                 <li><button className="dropdown-item" onClick={handleLogout}><i className="bi bi-box-arrow-right me-2"></i>Logout</button></li>
               </ul>
             </li>

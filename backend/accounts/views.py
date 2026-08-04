@@ -64,6 +64,26 @@ class UserViewSet(viewsets.ModelViewSet):
         return qs
 
     @action(detail=False, methods=["post"])
+    def set_availability(self, request):
+        user = request.user
+        if user.role != User.Role.STAFF:
+            return Response(
+                {"error": "Only staff can update availability"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        is_available = request.data.get("is_available")
+        if isinstance(is_available, str):
+            is_available = is_available.strip().lower() in ["true", "1", "yes"]
+        if not isinstance(is_available, bool):
+            return Response(
+                {"error": "is_available (true/false) is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user.is_available = is_available
+        user.save()
+        return Response(UserSerializer(user).data)
+
+    @action(detail=False, methods=["post"])
     def bulk_import(self, request):
         serializer = BulkImportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

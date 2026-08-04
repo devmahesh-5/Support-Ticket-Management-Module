@@ -49,7 +49,7 @@ class Command(BaseCommand):
             ('staff.com1', 'Anil', 'Gurung', User.Role.STAFF, 'COM', '', User.StaffType.LAB),
             ('staff.com2', 'Binita', 'Khadka', User.Role.STAFF, 'COM', '', User.StaffType.TEACHER),
             ('staff.ele1', 'Deepak', 'Rai', User.Role.STAFF, 'ELE', '', User.StaffType.LAB),
-            ('staff.fin1', 'Nita', 'Sharma', User.Role.STAFF, 'FIN', '', User.StaffType.FINANCE),
+            ('z', 'Nita', 'Sharma', User.Role.STAFF, 'FIN', '', User.StaffType.FINANCE),
             ('staff.aca1', 'Sagar', 'Bhandari', User.Role.STAFF, 'ACA', '', User.StaffType.ACADEMIC),
             ('staff.lib1', 'Mina', 'Poudel', User.Role.STAFF, 'LIB', '', User.StaffType.LIBRARY),
             ('staff.fac1', 'Bikram', 'Singh', User.Role.STAFF, 'FAC', '', User.StaffType.FACILITIES),
@@ -74,10 +74,10 @@ class Command(BaseCommand):
             (cat_objs['Academic'],            'ACA',  5),
             (cat_objs['Library'],             'LIB',  6),
             (cat_objs['Hostel / Facilities'], 'FAC',  7),
-            (cat_objs['General / Other'],     'SELF', 8),
+            (cat_objs['General / Other'],     'HOD',  8),
         ]
         for category, target_dept, priority in rules:
-            RoutingRule.objects.get_or_create(
+            rule, _ = RoutingRule.objects.get_or_create(
                 category=category,
                 defaults={
                     'target_department': target_dept,
@@ -85,6 +85,10 @@ class Command(BaseCommand):
                     'is_active': True,
                 }
             )
+            rule.target_department = target_dept
+            rule.priority = priority
+            rule.is_active = True
+            rule.save()
 
         self.stdout.write(self.style.SUCCESS("Seed complete!"))
         self.stdout.write(f"Users: {User.objects.count()}")

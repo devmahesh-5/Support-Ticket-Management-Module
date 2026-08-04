@@ -1,12 +1,19 @@
 from rest_framework import serializers
 from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, Attachment
 from accounts.serializers import UserSerializer
+from .routing import get_category_route
 
 
 class CategorySerializer(serializers.ModelSerializer):
+    target_department = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
         fields = "__all__"
+
+    def get_target_department(self, obj):
+        route = get_category_route(obj)
+        return route["target_dept"] if route else None
 
 
 class RoutingRuleSerializer(serializers.ModelSerializer):
@@ -97,9 +104,10 @@ class TicketCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ticket
         fields = [
-            "title", "description", "category", "priority",
+            "id", "ticket_id", "title", "description", "category", "priority",
             "department", "is_class_level", "class_section", "student_names",
         ]
+        read_only_fields = ["id", "ticket_id"]
 
     def create(self, validated_data):
         validated_data["created_by"] = self.context["request"].user

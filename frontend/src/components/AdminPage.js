@@ -7,23 +7,52 @@ export default function AdminPage() {
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [stats, setStats] = useState(null);
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
   const [tab, setTab] = useState("stats");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [newUser, setNewUser] = useState({
     username: "", email: "", password: "password123",
     first_name: "", last_name: "", role: "STUDENT", department: "",
   });
 
   useEffect(() => {
-    Promise.all([
-      userAPI.list(),
-      categoryAPI.list(),
-      ticketAPI.stats(),
-    ]).then(([u, c, s]) => {
-      setUsers(u.data.results || u.data);
-      setCategories(c.data.results || c.data);
-      setStats(s.data);
-    }).catch(() => {});
+    userAPI.list().then((u) => setUsers(u.data.results || u.data)).catch(() => {});
+    categoryAPI.list().then((c) => setCategories(c.data.results || c.data)).catch(() => {});
+    ticketAPI.stats().then((s) => setStats(s.data)).catch(() => {});
+    loadReport();
   }, []);
+
+  const loadReport = async (from = dateFrom, to = dateTo) => {
+    setReportLoading(true);
+    try {
+      const params = {};
+      if (from) params.start = from;
+      if (to) params.end = to;
+      const res = await ticketAPI.report(params);
+      setReport(res.data);
+    } catch {
+      setReport(null);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      const params = {};
+      if (dateFrom) params.start = dateFrom;
+      if (dateTo) params.end = dateTo;
+      const res = await ticketAPI.exportTickets(params);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tickets_report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {}
+  };
 
   const createUser = async (e) => {
     e.preventDefault();
@@ -41,6 +70,7 @@ export default function AdminPage() {
 
   const tabs = [
     { key: "stats", label: "Statistics", icon: "bi-bar-chart" },
+    { key: "reports", label: "Reports", icon: "bi-file-earmark-bar-graph" },
     { key: "users", label: "Users", icon: "bi-people" },
     { key: "categories", label: "Categories", icon: "bi-tags" },
   ];
@@ -101,6 +131,137 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === "reports" && (
+        <div>
+          <div className="card shadow-sm mb-4">
+            <div className="card-body d-flex flex-wrap align-items-center gap-2">
+              <label className="form-label mb-0">From</label>
+              <input type="date" className="form-control form-control-sm" style={{ maxWidth: "160px" }}
+                value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              <label className="form-label mb-0 ms-2">To</label>
+              <input type="date" className="form-control form-control-sm" style={{ maxWidth: "160px" }}
+                value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              <button className="btn btn-primary btn-sm" onClick={() => loadReport()}>
+                <i className="bi bi-funnel me-1"></i>Apply
+              </button>
+              <button className="btn btn-success btn-sm ms-auto" onClick={handleExport}>
+                <i className="bi bi-file-earmark-excel me-1"></i>Export to Excel
+              </button>
+            </div>
+          </div>
+
+          {reportLoading ? (
+            <div className="text-center py-5"><div className="spinner-border"></div></div>
+          ) : !report ? (
+            <div className="alert alert-info">No report data available.</div>
+          ) : (
+            <>
+              <div className="row g-3 mb-4">
+                <div className="col-md-2">
+                  <div className="card bg-primary text-white shadow"><div className="card-body"><h2>{report.total}</h2><div>Total</div></div></div>
+                </div>
+                <div className="col-md-2">
+                  <div className="card bg-success text-white shadow"><div className="card-body"><h2>{(report.by_status?.CLOSED || 0) + (report.by_status?.RESOLVED || 0)}</h2><div>Closed/Resolved</div></div></div>
+                </div>
+                <div className="col-md-2">
+                  <div className="card bg-danger text-white shadow"><div className="card-body"><h2>{report.overdue}</h2><div>Overdue</div></div></div>
+                </div>
+                <div className="col-md-3">
+                  <div className="card bg-info text-white shadow"><div className="card-body"><h2>{report.avg_resolution_hours ? `${report.avg_resolution_hours}h` : "N/A"}</h2><div>Avg Resolution</div></div></div>
+                </div>
+                <div className="col-md-3">
+                  <div className="card bg-warning text-white shadow"><div className="card-body"><h2>{report.missed_deadline_pct != null ? `${report.missed_deadline_pct}%` : "N/A"}</h2><div>Missed Deadline</div></div></div>
+                </div>
+              </div>
+
+              <div className="row g-3 mb-4">
+                <div className="col-md-4">
+                  <div className="card shadow-sm h-100">
+                    <div className="card-header bg-white"><h6 className="mb-0">By Category</h6></div>
+                    <div className="card-body">
+                      {Object.entries(report.by_category || {}).length === 0 ? (
+                        <div className="text-muted">No data</div>
+                      ) : (
+                        Object.entries(report.by_category).map(([k, v]) => {
+                          const max = Math.max(...Object.values(report.by_category), 1);
+                          return (
+                            <div key={k} className="mb-2">
+                              <div className="d-flex justify-content-between small">
+                                <span>{k}</span><span className="fw-bold">{v}</span>
+                              </div>
+                              <div className="progress" style={{ height: "6px" }}>
+                                <div className="progress-bar" style={{ width: `${(v / max) * 100}%` }}></div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-md-4">
+                  <div className="card shadow-sm h-100">
+                    <div className="card-header bg-white"><h6 className="mb-0">Weekly Trend</h6></div>
+                    <div className="card-body">
+                      {report.weekly_trend?.length === 0 ? (
+                        <div className="text-muted">No assigned tickets</div>
+                      ) : (
+                        report.weekly_trend?.map((w) => (
+                          <div key={w.week} className="d-flex justify-content-between small mb-1 border-bottom pb-1">
+                            <span>{w.week}</span><span className="badge bg-primary">{w.tickets}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-md-4">
+                  <div className="card shadow-sm h-100">
+                    <div className="card-header bg-white"><h6 className="mb-0">Staff Metrics</h6></div>
+                    <div className="card-body p-0">
+                      <div className="table-responsive">
+                        <table className="table table-sm mb-0">
+                          <thead className="table-light">
+                            <tr><th>Staff</th><th>Dept</th><th>Handled</th><th>Open</th><th>Avg Resp</th></tr>
+                          </thead>
+                          <tbody>
+                            {report.staff_metrics?.length === 0 ? (
+                              <tr><td colSpan="5" className="text-muted">No staff</td></tr>
+                            ) : (
+                              report.staff_metrics?.map((s, i) => (
+                                <tr key={i}>
+                                  <td>{s.name}</td>
+                                  <td>{s.department || "-"}</td>
+                                  <td>{s.tickets_handled}</td>
+                                  <td>{s.open_tickets}</td>
+                                  <td>{s.avg_response_hours != null ? `${s.avg_response_hours}h` : "-"}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card shadow-sm">
+                <div className="card-header bg-white"><h6 className="mb-0">By Status</h6></div>
+                <div className="card-body">
+                  {Object.entries(report.by_status || {}).map(([k, v]) => (
+                    <span key={k} className="badge bg-secondary me-2 p-2">{k}: {v}</span>
+                  ))}
+                  {Object.keys(report.by_status || {}).length === 0 && <span className="text-muted">No data</span>}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

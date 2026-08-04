@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Tickets - Pulchowk CIT | Government of Nepal</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            nepali: { red: '#C8102E', darkred: '#9B0B23', blue: '#003893', gold: '#FFD700', cream: '#FFF8F0', slate: '#2C3E50' },
+            "primary-container": "#C8102E",
+            "surface-container-highest": "#e1e3e4",
+            "secondary-container": "#FDE8E8",
+            "on-primary-fixed-variant": "#9B0B23",
+            "inverse-surface": "#2e3132",
+            "surface-container-high": "#e7e8e9",
+            "primary-fixed-dim": "#FDE8E8",
+            "surface-container": "#edeeef",
+            "on-tertiary-container": "#b7bbbe",
+            "on-secondary-container": "#55656d",
+            "on-surface-variant": "#42474f",
+            "surface-container-lowest": "#ffffff",
+            "surface-variant": "#e1e3e4",
+            "surface-container-low": "#f3f4f5",
+            "surface-dim": "#d9dadb",
+            "error-container": "#ffdad6",
+            "surface-tint": "#C8102E",
+            "outline": "#727780",
+            "on-background": "#191c1d",
+            "on-surface": "#191c1d",
+            "on-primary": "#ffffff",
+            "outline-variant": "#c2c7d1",
+            "error": "#ba1a1a",
+            "inverse-on-surface": "#f0f1f2",
+            "primary-fixed": "#d2e4ff",
+            "inverse-primary": "#FDE8E8",
+            "primary": "#9B0B23",
+            "surface": "#f8f9fa",
+            "surface-bright": "#f8f9fa",
+            "tertiary": "#303437",
+            "background": "#FFF8F0",
+            "on-error-container": "#93000a",
+            "tertiary-container": "#474b4e",
+            "tertiary-fixed-dim": "#c4c7ca",
+            "on-error": "#ffffff",
+            "secondary": "#516169",
+            "secondary-fixed-dim": "#b9c9d3",
+            "on-tertiary": "#ffffff",
+            "on-tertiary-fixed": "#181c1e"
+          },
+          borderRadius: { DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem" },
+          spacing: { sm: "12px", md: "16px", "sidebar-width": "280px", gutter: "24px", base: "8px", xs: "4px", "max-container": "1440px", xl: "32px", lg: "24px" },
+          fontFamily: { title: ["Inter"], body: ["Inter"], heading: ["Inter"] },
+          fontSize: {
+            "title-lg": ["20px", { lineHeight: "28px", fontWeight: "600" }],
+            "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }],
+            "headline-lg-mobile": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+            "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+            "display-lg": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "700" }],
+            "label-md": ["14px", { lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "500" }],
+            "label-sm": ["12px", { lineHeight: "16px", letterSpacing: "0.03em", fontWeight: "600" }],
+            "headline-md": ["24px", { lineHeight: "32px", fontWeight: "600" }]
+          }
+        },
+      },
+    }
+  </script>
+  <style>
+    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .fill-icon .material-symbols-outlined { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    body { min-height: 100dvh; font-family: 'Inter', sans-serif; }
+    .nepal-tricolor { height: 4px; background: linear-gradient(90deg, #003893 0%, #003893 33.33%, #C8102E 33.33%, #C8102E 66.66%, #FFFFFF 66.66%, #FFFFFF 100%); }
+    .gov-seal { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: linear-gradient(135deg, #fff 60%, #f0f0f0); box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #c2c7d1; border-radius: 10px; }
+  </style>
+</head>
+<body class="bg-[#FFF8F0] text-on-background antialiased flex flex-col min-h-screen">
+  <!-- Nepal Tricolor Bar -->
+  <div class="nepal-tricolor"></div>
+
+  <!-- ===== MASTHEAD: Government of Nepal ===== -->
+  <header class="bg-white border-b border-[#D4A574]/30">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-2">
+      <div class="flex items-center gap-4">
+        <div class="gov-seal shrink-0 border-2 border-[#C8102E]">
+          <svg viewBox="0 0 100 100" class="w-8 h-8" fill="none">
+            <circle cx="50" cy="50" r="48" fill="white" stroke="#C8102E" stroke-width="1.5"/>
+            <path d="M30 55 Q50 25 70 55 Q60 65 50 50 Q40 65 30 55Z" fill="#C8102E" opacity="0.9"/>
+            <path d="M35 55 L50 30 L65 55" fill="#C8102E" opacity="0.6"/>
+            <circle cx="50" cy="40" r="4" fill="#003893"/>
+            <circle cx="38" cy="60" r="5" fill="#FFD700" opacity="0.8"/>
+            <path d="M62 58 Q67 65 62 68 Q57 65 62 58Z" fill="#FFD700" opacity="0.8"/>
+          </svg>
+        </div>
+        <div class="text-center md:text-left">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-0">
+            <span class="text-[10px] tracking-[0.3em] uppercase text-[#C8102E] font-semibold">Government of Nepal</span>
+            <span class="text-[10px] text-[#C8102E]/40 hidden sm:inline">|</span>
+            <span class="text-[10px] tracking-[0.2em] uppercase text-[#003893] font-semibold hidden sm:inline">Ministry of Education, Science &amp; Technology</span>
+          </div>
+          <h1 class="text-lg md:text-xl font-bold text-[#1A1A2E] leading-tight tracking-tight">Institute of Engineering · Pulchowk Campus</h1>
+          <p class="text-[11px] text-gray-500 tracking-wide">Information Technology Service Desk Portal</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 text-xs text-gray-500">
+        <div class="hidden sm:flex items-center gap-1">
+          <span class="material-symbols-outlined text-[16px] text-[#C8102E]">language</span>
+          <span>नेपाली</span>
+        </div>
+        <div class="h-4 w-px bg-gray-300 hidden sm:block"></div>
+        <div class="flex items-center gap-1">
+          <span class="material-symbols-outlined text-[16px] text-[#C8102E]">schedule</span>
+          <span id="current-datetime"></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== SECONDARY NAV BAR (Crimson) ===== -->
+  <nav class="bg-[#C8102E] text-white shadow-md">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 flex items-center h-11 overflow-x-auto gap-0.5">
+      <a href="#" class="px-3 py-1.5 text-xs font-medium hover:bg-white/10 rounded transition-colors whitespace-nowrap flex items-center gap-1">
+        <span class="material-symbols-outlined text-[16px]">home</span>
+      </a>
+      <a href="#" class="px-3 py-1.5 text-xs font-medium hover:bg-white/10 rounded transition-colors whitespace-nowrap">Dashboard</a>
+      <a href="#" class="px-3 py-1.5 text-xs font-medium bg-white/15 rounded transition-colors whitespace-nowrap">Support Tickets</a>
+      <a href="#" class="px-3 py-1.5 text-xs font-medium hover:bg-white/10 rounded transition-colors whitespace-nowrap">Staff Assignment</a>
+      <a href="#" class="px-3 py-1.5 text-xs font-medium hover:bg-white/10 rounded transition-colors whitespace-nowrap">Reports</a>
+      <a href="#" class="px-3 py-1.5 text-xs font-medium hover:bg-white/10 rounded transition-colors whitespace-nowrap">User Management</a>
+    </div>
+  </nav>
+
+  <!-- Tricolor Divider -->
+  <div class="nepal-tricolor"></div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div class="flex-1 max-w-7xl mx-auto w-full px-4 md:px-6 py-5 md:py-6">
+    <!-- Breadcrumb & Title -->
+    <div class="mb-5">
+      <nav class="flex text-xs text-gray-500 mb-1.5">
+        <ol class="inline-flex items-center gap-1.5">
+          <li><a href="#" class="hover:text-[#C8102E] transition-colors">Home</a></li>
+          <li><span class="material-symbols-outlined text-[14px]">chevron_right</span></li>
+          <li><a href="#" class="hover:text-[#C8102E] transition-colors">Admin Portal</a></li>
+          <li><span class="material-symbols-outlined text-[14px]">chevron_right</span></li>
+          <li class="text-[#C8102E] font-semibold">Ticket Management</li>
+        </ol>
+      </nav>
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <h1 class="text-2xl md:text-3xl font-bold text-[#1A1A2E] tracking-tight flex items-center gap-2">
+            <span class="material-symbols-outlined text-[#C8102E] text-3xl">confirmation_number</span>
+            Ticket Management
+          </h1>
+          <p class="text-sm text-gray-500 mt-1">Overview and resolution tracking for university IT services.</p>
+        </div>
+        <button class="bg-[#C8102E] text-white h-11 px-6 font-medium text-sm hover:bg-[#9B0B23] transition-colors shadow-sm flex items-center justify-center gap-2 whitespace-nowrap rounded-sm">
+          <span class="material-symbols-outlined text-[18px]">add</span>
+          Create New Ticket
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== STATS CARDS ===== -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+      <div class="bg-white border border-[#D4A574]/30 shadow-sm p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Total Tickets</p>
+            <p class="text-2xl font-bold text-gray-800 mt-1">124</p>
+            <p class="text-xs text-green-600 mt-1 flex items-center gap-0.5">
+              <span class="material-symbols-outlined text-[14px]">trending_up</span>
+              +12% this month
+            </p>
+          </div>
+          <div class="w-10 h-10 rounded bg-[#FFF5F5] flex items-center justify-center">
+            <span class="material-symbols-outlined text-[#C8102E]">confirmation_number</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white border border-[#D4A574]/30 shadow-sm p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Open</p>
+            <p class="text-2xl font-bold text-[#C8102E] mt-1">38</p>
+            <p class="text-xs text-gray-400 mt-1">Pending attention</p>
+          </div>
+          <div class="w-10 h-10 rounded bg-[#FFF5F5] flex items-center justify-center">
+            <span class="material-symbols-outlined text-[#C8102E]">pending</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white border border-[#D4A574]/30 shadow-sm p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">In Progress</p>
+            <p class="text-2xl font-bold text-amber-600 mt-1">42</p>
+            <p class="text-xs text-gray-400 mt-1">Being resolved</p>
+          </div>
+          <div class="w-10 h-10 rounded bg-amber-50 flex items-center justify-center">
+            <span class="material-symbols-outlined text-amber-600">hourglass_top</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white border border-[#D4A574]/30 shadow-sm p-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Resolved</p>
+            <p class="text-2xl font-bold text-green-600 mt-1">44</p>
+            <p class="text-xs text-green-600 mt-1 flex items-center gap-0.5">
+              <span class="material-symbols-outlined text-[14px]">check_circle</span>
+              35% completion
+            </p>
+          </div>
+          <div class="w-10 h-10 rounded bg-green-50 flex items-center justify-center">
+            <span class="material-symbols-outlined text-green-600">check_circle</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== FILTERS ===== -->
+    <div class="bg-white border border-[#D4A574]/30 shadow-sm p-4 mb-5">
+      <div class="flex flex-col md:flex-row gap-4 items-end">
+        <div class="w-full md:w-1/3">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Search Tickets</label>
+          <div class="relative">
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+            <input class="w-full h-10 pl-10 pr-3 bg-white border border-gray-200 focus:border-[#C8102E] focus:ring-1 focus:ring-[#C8102E]/20 outline-none text-sm text-gray-700 placeholder:text-gray-400" placeholder="Search by ID, Subject, or Name..." type="text"/>
+          </div>
+        </div>
+        <div class="w-full md:w-1/4">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Department</label>
+          <select class="w-full h-10 px-3 bg-white border border-gray-200 focus:border-[#C8102E] focus:ring-1 focus:ring-[#C8102E]/20 outline-none text-sm text-gray-700">
+            <option value="all">All Departments</option>
+            <option value="academic">Academic Affairs</option>
+            <option value="financial">Financial Services</option>
+            <option value="it">IT Services</option>
+            <option value="hostel">Hostel Management</option>
+          </select>
+        </div>
+        <div class="w-full md:w-1/4">
+          <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
+          <select class="w-full h-10 px-3 bg-white border border-gray-200 focus:border-[#C8102E] focus:ring-1 focus:ring-[#C8102E]/20 outline-none text-sm text-gray-700">
+            <option value="all">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </div>
+        <div class="flex-shrink-0 w-full md:w-auto">
+          <button class="w-full md:w-auto h-10 px-4 border border-gray-200 text-gray-600 flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-colors text-sm font-medium bg-white">
+            <span class="material-symbols-outlined text-[18px]">filter_list</span>
+            More Filters
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TICKETS TABLE ===== -->
+    <div class="bg-white border border-[#D4A574]/30 shadow-sm overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-[#C8102E] text-white text-xs uppercase tracking-wider">
+              <th class="px-4 py-3.5 font-semibold border-r border-white/10">Ticket ID</th>
+              <th class="px-4 py-3.5 font-semibold border-r border-white/10 min-w-[200px]">Subject</th>
+              <th class="px-4 py-3.5 font-semibold border-r border-white/10">Category</th>
+              <th class="px-4 py-3.5 font-semibold border-r border-white/10">Priority</th>
+              <th class="px-4 py-3.5 font-semibold border-r border-white/10">Assigned To</th>
+              <th class="px-4 py-3.5 font-semibold border-r border-white/10">Status</th>
+              <th class="px-4 py-3.5 font-semibold text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody class="text-sm text-gray-700 divide-y divide-gray-100">
+            <!-- Row 1 -->
+            <tr class="hover:bg-[#FFF8F0] transition-colors">
+              <td class="px-4 py-3.5 font-semibold text-[#C8102E] border-r border-gray-100">#TCK-8901</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="font-medium text-gray-800">Moodle Enrollment Issue</div>
+                <div class="text-xs text-gray-400 mt-0.5">BCT 3rd Year</div>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 border-r border-gray-100">Academic</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-red-600 font-semibold text-xs bg-red-50 px-2 py-0.5">High</span>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">SJ</div>
+                  <span class="text-gray-500 text-xs">S. Joshi</span>
+                </div>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-[#C8102E] font-medium text-xs bg-[#FFF5F5] px-2 py-0.5">Open</span>
+              </td>
+              <td class="px-4 py-3.5 text-right">
+                <button class="text-[#C8102E] hover:text-[#9B0B23] p-1 hover:bg-[#FFF5F5] rounded transition-colors">
+                  <span class="material-symbols-outlined text-[18px]">edit</span>
+                </button>
+              </td>
+            </tr>
+            <!-- Row 2 -->
+            <tr class="hover:bg-[#FFF8F0] transition-colors">
+              <td class="px-4 py-3.5 font-semibold text-[#C8102E] border-r border-gray-100">#TCK-8894</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="font-medium text-gray-800">Fee Payment Failed</div>
+                <div class="text-xs text-gray-400 mt-0.5">Transaction ID: 49201A</div>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 border-r border-gray-100">Financial</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-amber-600 font-semibold text-xs bg-amber-50 px-2 py-0.5">Medium</span>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">KS</div>
+                  <span class="text-gray-500 text-xs">K. Sharma</span>
+                </div>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-amber-600 font-medium text-xs bg-amber-50 px-2 py-0.5">In Progress</span>
+              </td>
+              <td class="px-4 py-3.5 text-right">
+                <button class="text-[#C8102E] hover:text-[#9B0B23] p-1 hover:bg-[#FFF5F5] rounded transition-colors">
+                  <span class="material-symbols-outlined text-[18px]">edit</span>
+                </button>
+              </td>
+            </tr>
+            <!-- Row 3 -->
+            <tr class="hover:bg-[#FFF8F0] transition-colors">
+              <td class="px-4 py-3.5 font-semibold text-[#C8102E] border-r border-gray-100">#TCK-8872</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="font-medium text-gray-800">Wi-Fi Access Request</div>
+                <div class="text-xs text-gray-400 mt-0.5">Library Ground Floor</div>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 border-r border-gray-100">IT Services</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-gray-400 text-xs bg-gray-100 px-2 py-0.5">Low</span>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">AM</div>
+                  <span class="text-gray-500 text-xs">A. Maharjan</span>
+                </div>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-green-600 font-medium text-xs bg-green-50 px-2 py-0.5">Resolved</span>
+              </td>
+              <td class="px-4 py-3.5 text-right">
+                <button class="text-[#C8102E] hover:text-[#9B0B23] p-1 hover:bg-[#FFF5F5] rounded transition-colors">
+                  <span class="material-symbols-outlined text-[18px]">edit</span>
+                </button>
+              </td>
+            </tr>
+            <!-- Row 4 -->
+            <tr class="hover:bg-[#FFF8F0] transition-colors">
+              <td class="px-4 py-3.5 font-semibold text-[#C8102E] border-r border-gray-100">#TCK-8865</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="font-medium text-gray-800">Room Allocation Error</div>
+                <div class="text-xs text-gray-400 mt-0.5">Block C, Room 204</div>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 border-r border-gray-100">Hostel</td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-red-600 font-semibold text-xs bg-red-50 px-2 py-0.5">High</span>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600">RP</div>
+                  <span class="text-gray-500 text-xs">R. Pradhan</span>
+                </div>
+              </td>
+              <td class="px-4 py-3.5 border-r border-gray-100">
+                <span class="text-[#C8102E] font-medium text-xs bg-[#FFF5F5] px-2 py-0.5">Open</span>
+              </td>
+              <td class="px-4 py-3.5 text-right">
+                <button class="text-[#C8102E] hover:text-[#9B0B23] p-1 hover:bg-[#FFF5F5] rounded transition-colors">
+                  <span class="material-symbols-outlined text-[18px]">edit</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Pagination -->
+      <div class="border-t border-gray-100 px-4 py-3 flex items-center justify-between bg-[#FFF8F0]">
+        <div class="text-xs text-gray-500">Showing 1 to 4 of 124 entries</div>
+        <div class="flex items-center gap-1">
+          <button class="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50" disabled>
+            <span class="material-symbols-outlined text-[18px]">chevron_left</span>
+          </button>
+          <button class="w-7 h-7 bg-[#C8102E] text-white text-xs font-medium flex items-center justify-center">1</button>
+          <button class="w-7 h-7 hover:bg-gray-100 text-gray-600 text-xs font-medium flex items-center justify-center transition-colors">2</button>
+          <button class="w-7 h-7 hover:bg-gray-100 text-gray-600 text-xs font-medium flex items-center justify-center transition-colors">3</button>
+          <span class="text-xs text-gray-400 px-1">...</span>
+          <button class="p-1 text-gray-400 hover:text-gray-600">
+            <span class="material-symbols-outlined text-[18px]">chevron_right</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <div class="nepal-tricolor"></div>
+  <footer class="bg-[#1A1A2E] text-white/80 text-xs">
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1.5">
+          <svg viewBox="0 0 100 100" class="w-4 h-4 fill-[#C8102E]">
+            <path d="M30 55 Q50 25 70 55 Q60 65 50 50 Q40 65 30 55Z"/>
+          </svg>
+          <span class="font-semibold text-white/90">Government of Nepal</span>
+        </div>
+        <span class="text-white/30 hidden sm:inline">|</span>
+        <span>© 2026. All Rights Reserved.</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
+        <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
+        <a href="#" class="hover:text-white transition-colors">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Mobile Bottom Nav -->
+  <nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-14 bg-white border-t border-gray-200 shadow-lg">
+    <a class="flex flex-col items-center justify-center text-gray-400 active:scale-90 transition-transform flex-1 h-full" href="#">
+      <span class="material-symbols-outlined mb-0.5 text-[20px]">grid_view</span>
+      <span class="text-[10px] font-medium">Dashboard</span>
+    </a>
+    <a class="flex flex-col items-center justify-center text-[#C8102E] font-bold active:scale-90 transition-transform flex-1 h-full" href="#">
+      <span class="material-symbols-outlined mb-0.5 text-[20px]">confirmation_number</span>
+      <span class="text-[10px] font-medium">Tickets</span>
+    </a>
+    <a class="flex flex-col items-center justify-center text-gray-400 active:scale-90 transition-transform flex-1 h-full" href="#">
+      <span class="material-symbols-outlined mb-0.5 text-[20px]">account_circle</span>
+      <span class="text-[10px] font-medium">Profile</span>
+    </a>
+  </nav>
+
+  <script>
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('current-datetime').textContent = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+    updateClock(); setInterval(updateClock, 30000);
+  </script>
+</body>
+</html>
