@@ -104,10 +104,6 @@ def assign_ticket(ticket):
 
     assigned = least_loaded_staff(filters)
 
-    if not assigned and target_staff_type:
-        del filters["staff_type"]
-        assigned = least_loaded_staff(filters)
-
     if not assigned:
         assigned = User.objects.filter(
             role=User.Role.DEPT_ADMIN, department=target_dept,
@@ -119,12 +115,11 @@ def assign_ticket(ticket):
     ticket.assigned_to = assigned
 
     sla_hours = 24
-    if ticket.priority == Ticket.Priority.CRITICAL:
-        sla_hours = 4
-    elif ticket.priority == Ticket.Priority.HIGH:
-        sla_hours = 8
-    elif ticket.category and ticket.category.sla_response_hours:
-        sla_hours = ticket.category.sla_response_hours
+    if ticket.category:
+        if ticket.category.sla_resolution_hours:
+            sla_hours = ticket.category.sla_resolution_hours
+        elif ticket.category.sla_response_hours:
+            sla_hours = ticket.category.sla_response_hours
 
     ticket.sla_deadline = timezone.now() + timedelta(hours=sla_hours)
     ticket.save()

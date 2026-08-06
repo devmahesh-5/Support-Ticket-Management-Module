@@ -8,6 +8,7 @@ urlpatterns = [
     path("api/auth/", include("accounts.urls")),
     path("api/tickets/", include("tickets.urls")),
     path("api/notifications/", include("notifications.urls")),
+    path("api/escalations/", include("escalations.urls")),
 ]
 
 if settings.DEBUG:

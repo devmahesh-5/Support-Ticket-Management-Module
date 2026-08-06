@@ -40,10 +40,21 @@ class User(AbstractUser):
     batch = models.CharField(max_length=10, blank=True, null=True)
     phone = models.CharField(max_length=15, blank=True, null=True)
     is_available = models.BooleanField(default=True, help_text="For staff: whether available for assignment")
+    level = models.IntegerField(
+        null=True, blank=True, default=1,
+        help_text="Staff escalation level (Level 1, 2, 3). Only applies to staff and administrator roles.",
+    )
 
     class Meta:
         verbose_name = "User"
         verbose_name_plural = "Users"
+
+    def save(self, *args, **kwargs):
+        # Students/CRs do not carry a staff escalation level or staff type.
+        if self.role in (self.Role.STUDENT, self.Role.CR):
+            self.level = None
+            self.staff_type = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.get_role_display()})"

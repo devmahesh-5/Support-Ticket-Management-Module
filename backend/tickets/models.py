@@ -86,11 +86,33 @@ class Ticket(models.Model):
     sla_deadline = models.DateTimeField(null=True, blank=True)
     escalation_level = models.IntegerField(default=0)
 
+    # --- SLA Escalation Policy Engine fields ---
+    escalation_policy = models.ForeignKey(
+        "escalations.EscalationPolicy", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="tickets",
+    )
+    queue = models.ForeignKey(
+        "escalations.SupportQueue", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="tickets",
+    )
+    sla_status = models.CharField(
+        max_length=20, default="OK",
+        choices=[("OK", "OK"), ("APPROACHING", "Approaching SLA"), ("BREACHED", "SLA Breached")],
+    )
+    response_deadline = models.DateTimeField(null=True, blank=True)
+    sla_breached_at = models.DateTimeField(null=True, blank=True)
+    first_response_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["sla_status"]),
+            models.Index(fields=["sla_deadline"]),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.ticket_id:
@@ -140,3 +162,15 @@ class Attachment(models.Model):
 
     def __str__(self):
         return self.filename
+
+
+class SystemSetting(models.Model):
+    allow_two_way_escalation = models.BooleanField(default=True, help_text="Allow de-escalation/handback of escalated tickets")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "System Setting"
+
+    def __str__(self):
+        return f"System Setting (2-Way Escalation: {self.allow_two_way_escalation})"
+
