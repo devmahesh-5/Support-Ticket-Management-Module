@@ -63,6 +63,8 @@ class Command(BaseCommand):
             u.department = dept
             u.staff_type = staff_type
             u.section = section or None
+            if role in (User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN) and not u.level:
+                u.level = 1
             u.set_password('pass@123')
             u.save()
 

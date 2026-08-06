@@ -1,55 +1,113 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Headphones, ShieldCheck, Lock, User, LogIn, Sparkles } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
+    setError('');
     setLoading(true);
     try {
       await login(username, password);
-      navigate("/");
+      navigate('/');
     } catch {
-      setError("Invalid username or password");
+      setError('Invalid campus credentials or unauthorized account');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="container d-flex align-items-center justify-content-center" style={{ minHeight: "100vh" }}>
-      <div className="card shadow" style={{ width: "100%", maxWidth: "420px" }}>
-        <div className="card-body p-4">
-          <div className="text-center mb-4">
-            <i className="bi bi-ticket-perforated text-primary" style={{ fontSize: "3rem" }}></i>
-            <h3 className="mt-2">Support Ticket System</h3>
-            <p className="text-muted small">Pulchowk Engineering Campus</p>
+    <div className="min-h-screen w-full flex items-center justify-center bg-slate-900 px-4 relative overflow-hidden">
+      {/* Background Ambient Gradients */}
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-brand-600/30 rounded-full blur-3xl" />
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl" />
+
+      {/* Main Glass Card */}
+      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10 space-y-6">
+        {/* Brand Header */}
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 rounded-2xl bg-brand-600 flex items-center justify-center text-white mx-auto shadow-lg shadow-brand-500/30">
+            <Headphones className="w-7 h-7" />
           </div>
-          {error && <div className="alert alert-danger py-2">{error}</div>}
-          <form onSubmit={handleSubmit}>
-            <div className="mb-3">
-              <label className="form-label">Username</label>
-              <input type="text" className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
-            </div>
-            <div className="mb-3">
-              <label className="form-label">Password</label>
-              <input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
-            <button type="submit" className="btn btn-primary w-100" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
-            </button>
-          </form>
-          <div className="mt-3 small text-muted text-center">
-            Use campus credentials to login
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-950 text-brand-300 text-xs font-medium border border-brand-800/50">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>IOE Pulchowk Campus</span>
           </div>
+          <h2 className="text-2xl font-extrabold text-white tracking-tight">
+            Support Desk System
+          </h2>
+          <p className="text-xs text-slate-400">
+            Enterprise Ticket Portal for Students, Faculty & Staff
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs text-center font-medium">
+            {error}
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">Username</label>
+            <div className="relative">
+              <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoFocus
+                placeholder="Campus Username"
+                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Sign In to Portal</span>
+              </>
+            )}
+          </button>
+        </form>
+
+        <div className="pt-4 border-t border-slate-800/80 text-center text-[11px] text-slate-500 space-y-1">
+          <p>Pulchowk Engineering Campus Service Portal</p>
+          <p className="text-slate-400">Department of Computer & Electronics Engineering</p>
         </div>
       </div>
     </div>

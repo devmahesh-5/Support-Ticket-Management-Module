@@ -19,6 +19,167 @@ SRS Reference: `SRS_Support_Ticket_System_v1.2.pdf`
 
 ---
 
+## User Stories — SLA & Escalation Walkthrough
+
+This section walks through the system from each user's point of view: what happens, when it happens, and how. It covers every case a ticket can go through — creation, working, SLA breach, escalation, and resolution.
+
+### The building blocks
+
+**Support levels** — every ticket has an escalation level `0 → 1 → 2 → 3`:
+
+| Level | Status shown | Who | How a ticket gets here |
+| ----- | ------------ | --- | ---------------------- |
+| 0 | *Open* | L1 staff | New ticket routing |
+| 1 | *Escalated L1* | L1 staff | Manual escalation |
+| 2 | *Escalated L2* | L2 staff | SLA breach (auto) or manual |
+| 3 | *Admin Review* | Department HOD | Manual escalation, or fallback from lower levels |
+
+**The SLA clock** — every category has *response* and *resolution* hours. The clock **starts the moment a ticket is created** and **stops when the assigned staff clicks "Start Working"** (status becomes *In Progress*), which also records the first response. While a ticket is *In Progress* it is no longer tracked by the SLA engine.
+
+**Who can do what**
+
+| Action | Student / CR | Staff | HOD | Campus Admin |
+| ------ | :---: | :---: | :---: | :---: |
+| Create ticket | Yes | Yes | Yes | Yes |
+| Reply on thread | Yes | Yes | Yes | Yes |
+| Start Working | — | Yes | Yes | Yes |
+| Manually escalate | Yes | Yes | Yes | Yes |
+| De-escalate | — | — | Yes (if enabled) | Yes (if enabled) |
+| Assign / reassign | — | — | Yes | Yes |
+| Configure policies & routing | — | — | Yes | Yes |
+
+---
+
+### Student (and CR)
+
+**Case 1 — I create a ticket**
+
+- I pick a **category** (e.g. *Lab Equipment*, *Classroom*, *Financial*), a **priority**, and write my description.
+- The system looks up the category's routing rule: which **department** owns it and which **specialty** it needs (a *lab staff* member for Lab Equipment, a *teacher* for Classroom, etc.).
+- It assigns the ticket to the **least-busy available L1 staff member in that department with that specialty** (fewest active tickets).
+- My SLA clock starts immediately and I get a confirmation with the assigned staff member's name.
+
+**Case 2 — No matching specialty exists when my ticket is created**
+
+- The system **does not** fall back to "any random staff member". It skips straight to my **department HOD**, who assigns the right person manually. (Final fallback: Campus Admin.)
+
+**Case 3 — The assigned staff starts working**
+
+- The ticket shows *In Progress*. The staff member's first reply is recorded as the **first response** (my SLA response deadline is considered met), and the SLA clock stops while they work.
+
+**Case 4 — I feel my ticket is stuck**
+
+- I can click **Escalate** on the ticket. Each click raises the level one step: `0 → 1 → 2 → 3`. At each hop the ticket is reassigned — same specialty where possible, ending at the HOD at level 3. I cannot escalate a *Resolved* or *Closed* ticket.
+
+**CR note** — a CR's tickets are automatically set to their **class department**, so class-wide issues go to the right department's queue from the start. Everything else works the same as a student.
+
+---
+
+### Staff (L1)
+
+**Case 1 — A new ticket is routed to me**
+
+- I see it in my **Assigned** list with a countdown to the SLA deadlines.
+- At **50%** and **75%** of the SLA time, warning notifications are sent to me **and** my manager, so it doesn't silently slip.
+
+**Case 2 — I start working on it**
+
+- I click **Start Working**. The status becomes *In Progress* and my reply is stamped as the **first response**.
+- From this moment the SLA engine leaves the ticket alone — I'm actively handling it, so it can't be auto-escalated out from under me.
+
+**Case 3 — I miss the response or resolution deadline**
+
+- The ticket's policy triggers. With **auto-escalate ON**, the ticket is raised to the policy's `to_level` (e.g. level 2) and reassigned — the notification tells me it left my queue.
+- With **auto-escalate OFF**, the ticket is moved to the **Escalation Queue** but stays assigned to me until the HOD reassigns it.
+
+---
+
+### Staff (L2)
+
+**Case 1 — An escalated ticket lands on me**
+
+- I only receive tickets whose **specialty matches the category** — a lab ticket goes to an L2 *lab* staff member, never to a teacher. This holds for both automatic (SLA breach) and manual escalation.
+- The same SLA warnings apply to me, and the same "Start Working" behavior stops the clock.
+
+**Case 2 — No L2 staff with my specialty exists when a ticket escalates**
+
+- The system **never** assigns the ticket to a wrong-specialty L2 colleague. It escalates the ticket (level is raised, status becomes *Escalated L2*) and hands it to the **department HOD** to assign.
+
+---
+
+### HOD (Department Head)
+
+**Case 1 — The Escalation Queue has breached tickets (auto-escalate OFF)**
+
+- Breached tickets whose policy has **auto-escalate OFF** land in the **Escalation Queue** inbox on the SLA Dashboard.
+- I open each one and **assign it to the right staff member**; the ticket is then raised to level 3 (*Admin Review*) under my name.
+
+**Case 2 — A ticket escalated but no matching staff was found**
+
+- The ticket comes to me directly (level raised, status *Escalated L2*). I see it in my Assigned list and hand it to the correct person.
+
+**Case 3 — Someone escalates a ticket all the way to me**
+
+- At level 3 the ticket becomes *Admin Review* and is assigned to me (or the Campus Admin if my department has no HOD).
+
+**Case 4 — I want to send a ticket back down**
+
+- I can **de-escalate** (if two-way escalation is enabled): the level drops by one and the status goes back to *Escalated L1* (level 1) or *In Progress* (level 0).
+
+---
+
+### Campus Admin
+
+**Case 1 — Final fallback**
+
+- If a ticket has no matching staff **and** no department HOD (e.g. an unstaffed department), routed and breached tickets land with me.
+
+**Case 2 — Configuration**
+
+- I manage everything behind the scenes: users and their roles/levels, categories and their SLA hours, routing rules (department + specialty per category), and **escalation policies** (see below).
+
+---
+
+### What happens in each case — quick reference
+
+| Case | What happens | How |
+| ---- | ------------ | --- |
+| New ticket | Routed & assigned | Category → dept + specialty → least-busy available L1 staff |
+| No matching staff at creation | Goes to HOD | HOD → Campus Admin (never "any staff") |
+| Staff starts working | SLA stopped, first response recorded | Status → *In Progress* |
+| 50% / 75% SLA time | Warnings sent | In-app/email to assigned staff + manager |
+| Breach + policy **auto ON** | Auto-escalate | Level → policy's `to_level`, reassigned to same-specialty staff at that level; if none, HOD |
+| Breach + policy **auto OFF** | Pushed to Escalation Queue | HOD assigns from SLA Dashboard |
+| Manual escalation | Level +1 each click | `0 → 1 → 2 → 3`, same specialty per hop, ends at HOD |
+| De-escalation | Level −1 | HOD/admin only, status back to *Escalated L1* / *In Progress* |
+| Resolve / close | Ticket leaves SLA tracking | SLA engine no longer touches it |
+
+### The full journey of a breached ticket (step by step)
+
+1. Student creates a ticket → routed to L1 lab staff, SLA clock starts.
+2. Warnings at 50% and 75% go to the staff member and the manager.
+3. Deadline passes with no first response → the policy matches (department/category/priority):
+   - **auto ON** → ticket raised to the policy's target level, assigned to the same-specialty staff at that level. If none exists, the HOD gets it.
+   - **auto OFF** → ticket moved to the Escalation Queue.
+4. Every action (policy applied, warning sent, breach, escalation, reassignment) is written to the ticket's **audit trail**, so the full history is visible.
+5. Whoever ends up with the ticket clicks **Start Working**, replies (first response recorded), and works it to resolution.
+
+### How escalation is configured (admin)
+
+Escalation is **policy-driven**, not hardcoded. Each **Escalation Policy** sets:
+
+- **Scope** — which department / category / priority it applies to (the most specific match wins)
+- **From level → to level** — e.g. L1 → L2, or all the way to level 3
+- **Auto-escalate** — ON: auto-assign on breach; OFF: push to the Escalation Queue for the HOD
+- **Delay** — how long after the breach before it triggers (`escalation_delay_minutes`)
+- **Warnings** — 50% / 75% (or custom) thresholds for the assigned staff and manager
+
+Optional **Escalation Rules** (IF conditions / THEN actions) add extra triggers, e.g. escalate on no-activity hours, bump priority, notify, or assign a specific user or level.
+
+The only hardcoded behavior is *who* receives the ticket: least-busy available staff at the target level **matching the category's specialty**, then the department HOD, then the Campus Admin.
+
+---
+
 ## Step-by-Step Setup
 
 ### Prerequisites

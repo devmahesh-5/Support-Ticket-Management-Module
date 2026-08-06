@@ -1,7 +1,14 @@
 from rest_framework import serializers
-from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, Attachment
+from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, Attachment, SystemSetting
 from accounts.serializers import UserSerializer
 from .routing import get_category_route
+
+
+class SystemSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemSetting
+        fields = "__all__"
+
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -71,8 +78,8 @@ class TicketListSerializer(serializers.ModelSerializer):
         fields = [
             "id", "ticket_id", "title", "category_name", "status", "priority",
             "created_by_name", "assigned_to_name", "department",
-            "is_class_level", "sla_deadline", "created_at", "updated_at",
-            "message_count",
+            "is_class_level", "sla_deadline", "sla_status", "sla_breached_at",
+            "escalation_level", "created_at", "updated_at", "message_count",
         ]
 
     def get_created_by_name(self, obj):
@@ -110,5 +117,10 @@ class TicketCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "ticket_id"]
 
     def create(self, validated_data):
-        validated_data["created_by"] = self.context["request"].user
+        user = self.context["request"].user
+        if user.role not in [
+            "STAFF", "DEPT_ADMIN", "CAMPUS_ADMIN",
+        ]:
+            validated_data["priority"] = Ticket.Priority.MEDIUM
+        validated_data["created_by"] = user
         return super().create(validated_data)

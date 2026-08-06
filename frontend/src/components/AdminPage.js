@@ -1,6 +1,19 @@
-import React, { useState, useEffect } from "react";
-import { userAPI, categoryAPI, ticketAPI } from "../api/client";
-import { useAuth } from "../contexts/AuthContext";
+import React, { useState, useEffect } from 'react';
+import { 
+  BarChart3, 
+  FileSpreadsheet, 
+  Users, 
+  Tag, 
+  Download, 
+  ShieldCheck, 
+  Save, 
+  Check, 
+  Plus, 
+  Settings,
+  ArrowUpDown
+} from 'lucide-react';
+import { userAPI, categoryAPI, ticketAPI, systemSettingAPI } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -9,18 +22,46 @@ export default function AdminPage() {
   const [stats, setStats] = useState(null);
   const [report, setReport] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
-  const [tab, setTab] = useState("stats");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [tab, setTab] = useState('stats');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [allowTwoWay, setAllowTwoWay] = useState(true);
+  const [savingCategory, setSavingCategory] = useState(null);
+
+  const STAFF_ROLES = ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'];
+  const STAFF_TYPE_OPTIONS = ['LAB', 'TEACHER', 'IT', 'FINANCE', 'ACADEMIC', 'LIBRARY', 'FACILITIES', 'GENERAL'];
+
   const [newUser, setNewUser] = useState({
-    username: "", email: "", password: "password123",
-    first_name: "", last_name: "", role: "STUDENT", department: "",
+    username: '', 
+    email: '', 
+    password: 'password123',
+    first_name: '', 
+    last_name: '', 
+    role: 'STUDENT', 
+    department: '',
+    staff_type: '',
+    level: 1,
   });
 
+  const [editedCategories, setEditedCategories] = useState({});
+
   useEffect(() => {
-    userAPI.list().then((u) => setUsers(u.data.results || u.data)).catch(() => {});
-    categoryAPI.list().then((c) => setCategories(c.data.results || c.data)).catch(() => {});
+    userAPI.list().then((u) => setUsers(u.data.results || u.data || [])).catch(() => {});
+    categoryAPI.list().then((c) => {
+      const catList = c.data.results || c.data || [];
+      setCategories(catList);
+      const initialCatMap = {};
+      catList.forEach((cat) => {
+        initialCatMap[cat.id] = {
+          sla_response_hours: cat.sla_response_hours,
+          sla_resolution_hours: cat.sla_resolution_hours,
+        };
+      });
+      setEditedCategories(initialCatMap);
+    }).catch(() => {});
+    
     ticketAPI.stats().then((s) => setStats(s.data)).catch(() => {});
+    systemSettingAPI.get().then((s) => setAllowTwoWay(s.data.allow_two_way_escalation)).catch(() => {});
     loadReport();
   }, []);
 
@@ -46,7 +87,7 @@ export default function AdminPage() {
       if (dateTo) params.end = dateTo;
       const res = await ticketAPI.exportTickets(params);
       const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement("a");
+      const a = document.createElement('a');
       a.href = url;
       a.download = `tickets_report_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
@@ -56,287 +97,224 @@ export default function AdminPage() {
 
   const createUser = async (e) => {
     e.preventDefault();
+    const payload = { ...newUser };
+    if (!payload.staff_type) delete payload.staff_type;
     try {
-      await userAPI.create(newUser);
+      await userAPI.create(payload);
       const res = await userAPI.list();
-      setUsers(res.data.results || res.data);
-      setNewUser({ username: "", email: "", password: "password123", first_name: "", last_name: "", role: "STUDENT", department: "" });
+      setUsers(res.data.results || res.data || []);
+      setNewUser({ username: '', email: '', password: 'password123', first_name: '', last_name: '', role: 'STUDENT', department: '', staff_type: '', level: 1 });
+      alert('User created successfully!');
     } catch {}
   };
 
-  if (user?.role !== "CAMPUS_ADMIN" && user?.role !== "DEPT_ADMIN") {
-    return <div className="alert alert-danger">Access denied. Admin only.</div>;
+  const updateUserLevel = async (userId, newLevel) => {
+    try {
+      await userAPI.update(userId, { level: newLevel });
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, level: newLevel } : u));
+    } catch {}
+  };
+
+  const handleToggleTwoWay = async (e) => {
+    const val = e.target.checked;
+    setAllowTwoWay(val);
+    try {
+      await systemSettingAPI.update({ allow_two_way_escalation: val });
+    } catch {}
+  };
+
+  const handleSaveCategory = async (catId) => {
+    setSavingCategory(catId);
+    try {
+      const payload = editedCategories[catId];
+      const res = await categoryAPI.update(catId, payload);
+      setCategories((prev) => prev.map((c) => c.id === catId ? res.data : c));
+      alert('Category estimated hours saved successfully!');
+    } catch {
+      alert('Failed to update category.');
+    } finally {
+      setSavingCategory(null);
+    }
+  };
+
+  if (user?.role !== 'CAMPUS_ADMIN' && user?.role !== 'DEPT_ADMIN') {
+    return (
+      <div className="p-8 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-center font-medium text-sm">
+        Access Denied. Campus Administrator or HOD clearance required.
+      </div>
+    );
   }
 
   const tabs = [
-    { key: "stats", label: "Statistics", icon: "bi-bar-chart" },
-    { key: "reports", label: "Reports", icon: "bi-file-earmark-bar-graph" },
-    { key: "users", label: "Users", icon: "bi-people" },
-    { key: "categories", label: "Categories", icon: "bi-tags" },
+    { key: 'stats', label: 'Executive BI Stats', icon: BarChart3 },
+    { key: 'reports', label: 'Analytics Reports', icon: FileSpreadsheet },
+    { key: 'users', label: 'User Roster & Levels', icon: Users },
+    { key: 'categories', label: 'Categories & Target Times', icon: Tag },
+    { key: 'settings', label: 'Escalation Policy', icon: Settings },
   ];
 
   return (
-    <div className="container-fluid">
-      <h4 className="mb-4"><i className="bi bi-gear me-2"></i>Admin Panel</h4>
+    <div className="space-y-6">
+      {/* Admin Title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldCheck className="w-6 h-6 text-brand-600" />
+            Enterprise Administration & Policy Settings
+          </h1>
+          <p className="text-xs text-slate-500">Departmental metrics, staff escalation levels, 2-way policy, and category estimated target times</p>
+        </div>
+      </div>
 
-      <ul className="nav nav-tabs mb-4">
-        {tabs.map((t) => (
-          <li key={t.key} className="nav-item">
-            <button className={`nav-link ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
-              <i className={`bi ${t.icon} me-1`}></i>{t.label}
+      {/* Tabs Bar */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto pb-px">
+        {tabs.map((t) => {
+          const Icon = t.icon;
+          const isActive = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors border-b-2 whitespace-nowrap ${
+                isActive
+                  ? 'border-brand-600 text-brand-600 dark:text-brand-400 bg-slate-50 dark:bg-slate-800/60'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{t.label}</span>
             </button>
-          </li>
-        ))}
-      </ul>
+          );
+        })}
+      </div>
 
-      {tab === "stats" && stats && (
-        <div className="row g-3">
-          <div className="col-md-3">
-            <div className="card bg-primary text-white shadow">
-              <div className="card-body"><h2>{stats.total}</h2><div>Total Tickets</div></div>
+      {/* STATS TAB */}
+      {tab === 'stats' && stats && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="custom-card p-5">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Total Tickets</span>
+              <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{stats.total}</div>
             </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card bg-success text-white shadow">
-              <div className="card-body"><h2>{stats.by_status?.CLOSED || 0}</h2><div>Closed</div></div>
+            <div className="custom-card p-5">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Closed / Resolved</span>
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{stats.by_status?.CLOSED || 0}</div>
             </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card bg-danger text-white shadow">
-              <div className="card-body"><h2>{stats.overdue}</h2><div>Overdue</div></div>
+            <div className="custom-card p-5">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Overdue Tickets</span>
+              <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">{stats.overdue || 0}</div>
             </div>
-          </div>
-          <div className="col-md-3">
-            <div className="card bg-info text-white shadow">
-              <div className="card-body">
-                <h2>{stats.avg_resolution_hours ? `${stats.avg_resolution_hours}h` : "N/A"}</h2>
-                <div>Avg Resolution</div>
+            <div className="custom-card p-5">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Avg Resolution Time</span>
+              <div className="text-2xl font-bold text-brand-600 dark:text-brand-400 mt-1">
+                {stats.avg_resolution_hours ? `${stats.avg_resolution_hours}h` : 'N/A'}
               </div>
             </div>
           </div>
-          <div className="col-12">
-            <div className="card shadow-sm">
-              <div className="card-header bg-white"><h6 className="mb-0">By Category</h6></div>
-              <div className="card-body">
-                <div className="table-responsive">
-                  <table className="table table-sm">
-                    <thead><tr><th>Category</th><th>Count</th></tr></thead>
-                    <tbody>
-                      {Object.entries(stats.by_category || {}).map(([k, v]) => (
-                        <tr key={k}><td>{k}</td><td><span className="badge bg-primary">{v}</span></td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+
+          <div className="custom-card p-5">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Tickets by Category Breakdown</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                  <tr>
+                    <th className="p-3">Category</th>
+                    <th className="p-3">Count</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {Object.entries(stats.by_category || {}).map(([k, v]) => (
+                    <tr key={k}>
+                      <td className="p-3 font-medium text-slate-800 dark:text-slate-200">{k}</td>
+                      <td className="p-3">
+                        <span className="px-2.5 py-1 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold">
+                          {v}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
 
-      {tab === "reports" && (
-        <div>
-          <div className="card shadow-sm mb-4">
-            <div className="card-body d-flex flex-wrap align-items-center gap-2">
-              <label className="form-label mb-0">From</label>
-              <input type="date" className="form-control form-control-sm" style={{ maxWidth: "160px" }}
-                value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              <label className="form-label mb-0 ms-2">To</label>
-              <input type="date" className="form-control form-control-sm" style={{ maxWidth: "160px" }}
-                value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              <button className="btn btn-primary btn-sm" onClick={() => loadReport()}>
-                <i className="bi bi-funnel me-1"></i>Apply
-              </button>
-              <button className="btn btn-success btn-sm ms-auto" onClick={handleExport}>
-                <i className="bi bi-file-earmark-excel me-1"></i>Export to Excel
+      {/* REPORTS TAB */}
+      {tab === 'reports' && (
+        <div className="space-y-6">
+          <div className="custom-card p-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">Date Range:</span>
+              <input
+                type="date"
+                className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+              <span className="text-slate-400">to</span>
+              <input
+                type="date"
+                className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+              <button
+                onClick={() => loadReport()}
+                className="btn-primary text-xs"
+              >
+                Apply Range
               </button>
             </div>
+
+            <button
+              onClick={handleExport}
+              className="btn-secondary text-xs gap-1.5"
+            >
+              <Download className="w-4 h-4 text-emerald-600" />
+              <span>Export Excel Report</span>
+            </button>
           </div>
 
           {reportLoading ? (
-            <div className="text-center py-5"><div className="spinner-border"></div></div>
+            <div className="p-12 text-center text-slate-400">Loading BI Report Data...</div>
           ) : !report ? (
-            <div className="alert alert-info">No report data available.</div>
+            <div className="p-8 text-center text-slate-400">No report data available.</div>
           ) : (
-            <>
-              <div className="row g-3 mb-4">
-                <div className="col-md-2">
-                  <div className="card bg-primary text-white shadow"><div className="card-body"><h2>{report.total}</h2><div>Total</div></div></div>
-                </div>
-                <div className="col-md-2">
-                  <div className="card bg-success text-white shadow"><div className="card-body"><h2>{(report.by_status?.CLOSED || 0) + (report.by_status?.RESOLVED || 0)}</h2><div>Closed/Resolved</div></div></div>
-                </div>
-                <div className="col-md-2">
-                  <div className="card bg-danger text-white shadow"><div className="card-body"><h2>{report.overdue}</h2><div>Overdue</div></div></div>
-                </div>
-                <div className="col-md-3">
-                  <div className="card bg-info text-white shadow"><div className="card-body"><h2>{report.avg_resolution_hours ? `${report.avg_resolution_hours}h` : "N/A"}</h2><div>Avg Resolution</div></div></div>
-                </div>
-                <div className="col-md-3">
-                  <div className="card bg-warning text-white shadow"><div className="card-body"><h2>{report.missed_deadline_pct != null ? `${report.missed_deadline_pct}%` : "N/A"}</h2><div>Missed Deadline</div></div></div>
-                </div>
-              </div>
-
-              <div className="row g-3 mb-4">
-                <div className="col-md-4">
-                  <div className="card shadow-sm h-100">
-                    <div className="card-header bg-white"><h6 className="mb-0">By Category</h6></div>
-                    <div className="card-body">
-                      {Object.entries(report.by_category || {}).length === 0 ? (
-                        <div className="text-muted">No data</div>
-                      ) : (
-                        Object.entries(report.by_category).map(([k, v]) => {
-                          const max = Math.max(...Object.values(report.by_category), 1);
-                          return (
-                            <div key={k} className="mb-2">
-                              <div className="d-flex justify-content-between small">
-                                <span>{k}</span><span className="fw-bold">{v}</span>
-                              </div>
-                              <div className="progress" style={{ height: "6px" }}>
-                                <div className="progress-bar" style={{ width: `${(v / max) * 100}%` }}></div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="custom-card p-5">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Weekly Ticket Submission Trend</h3>
+                <div className="space-y-2 text-xs">
+                  {report.weekly_trend?.map((w) => (
+                    <div key={w.week} className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                      <span className="text-slate-600 dark:text-slate-300">{w.week}</span>
+                      <span className="font-bold text-brand-600">{w.tickets} tickets</span>
                     </div>
-                  </div>
-                </div>
-
-                <div className="col-md-4">
-                  <div className="card shadow-sm h-100">
-                    <div className="card-header bg-white"><h6 className="mb-0">Weekly Trend</h6></div>
-                    <div className="card-body">
-                      {report.weekly_trend?.length === 0 ? (
-                        <div className="text-muted">No assigned tickets</div>
-                      ) : (
-                        report.weekly_trend?.map((w) => (
-                          <div key={w.week} className="d-flex justify-content-between small mb-1 border-bottom pb-1">
-                            <span>{w.week}</span><span className="badge bg-primary">{w.tickets}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="col-md-4">
-                  <div className="card shadow-sm h-100">
-                    <div className="card-header bg-white"><h6 className="mb-0">Staff Metrics</h6></div>
-                    <div className="card-body p-0">
-                      <div className="table-responsive">
-                        <table className="table table-sm mb-0">
-                          <thead className="table-light">
-                            <tr><th>Staff</th><th>Dept</th><th>Handled</th><th>Open</th><th>Avg Resp</th></tr>
-                          </thead>
-                          <tbody>
-                            {report.staff_metrics?.length === 0 ? (
-                              <tr><td colSpan="5" className="text-muted">No staff</td></tr>
-                            ) : (
-                              report.staff_metrics?.map((s, i) => (
-                                <tr key={i}>
-                                  <td>{s.name}</td>
-                                  <td>{s.department || "-"}</td>
-                                  <td>{s.tickets_handled}</td>
-                                  <td>{s.open_tickets}</td>
-                                  <td>{s.avg_response_hours != null ? `${s.avg_response_hours}h` : "-"}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card shadow-sm">
-                <div className="card-header bg-white"><h6 className="mb-0">By Status</h6></div>
-                <div className="card-body">
-                  {Object.entries(report.by_status || {}).map(([k, v]) => (
-                    <span key={k} className="badge bg-secondary me-2 p-2">{k}: {v}</span>
                   ))}
-                  {Object.keys(report.by_status || {}).length === 0 && <span className="text-muted">No data</span>}
                 </div>
               </div>
-            </>
-          )}
-        </div>
-      )}
 
-      {tab === "users" && user?.role === "CAMPUS_ADMIN" && (
-        <div className="row">
-          <div className="col-md-5">
-            <div className="card shadow-sm">
-              <div className="card-header bg-white"><h6 className="mb-0">Add New User</h6></div>
-              <div className="card-body">
-                <form onSubmit={createUser}>
-                  <div className="row mb-2">
-                    <div className="col-6">
-                      <input type="text" className="form-control form-control-sm" placeholder="Username" required
-                        value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
-                    </div>
-                    <div className="col-6">
-                      <input type="email" className="form-control form-control-sm" placeholder="Email"
-                        value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="row mb-2">
-                    <div className="col-6">
-                      <input type="text" className="form-control form-control-sm" placeholder="First Name"
-                        value={newUser.first_name} onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })} />
-                    </div>
-                    <div className="col-6">
-                      <input type="text" className="form-control form-control-sm" placeholder="Last Name"
-                        value={newUser.last_name} onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="row mb-2">
-                    <div className="col-6">
-                      <select className="form-select form-select-sm" value={newUser.role}
-                        onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
-                        <option value="STUDENT">Student</option>
-                        <option value="CR">CR</option>
-                        <option value="STAFF">Staff</option>
-                        <option value="DEPT_ADMIN">Dept Admin</option>
-                        <option value="CAMPUS_ADMIN">Campus Admin</option>
-                      </select>
-                    </div>
-                    <div className="col-6">
-                      <select className="form-select form-select-sm" value={newUser.department}
-                        onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}>
-                        <option value="">No Dept</option>
-                        <option value="CIV">Civil</option>
-                        <option value="ELE">Electrical</option>
-                        <option value="COM">Computer</option>
-                        <option value="MEC">Mechanical</option>
-                        <option value="ARC">Architecture</option>
-                        <option value="APP">Applied Sciences</option>
-                      </select>
-                    </div>
-                  </div>
-                  <button type="submit" className="btn btn-primary btn-sm w-100">Add User</button>
-                </form>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-7">
-            <div className="card shadow-sm">
-              <div className="card-header bg-white"><h6 className="mb-0">Users</h6></div>
-              <div className="card-body p-0">
-                <div className="table-responsive" style={{ maxHeight: "400px" }}>
-                  <table className="table table-sm table-hover mb-0">
-                    <thead className="table-light">
-                      <tr><th>Username</th><th>Name</th><th>Role</th><th>Dept</th></tr>
+              <div className="md:col-span-2 custom-card p-5">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Staff Performance Leaderboard</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                      <tr>
+                        <th className="p-2">Staff</th>
+                        <th className="p-2">Dept</th>
+                        <th className="p-2">Handled</th>
+                        <th className="p-2">Open</th>
+                        <th className="p-2">Avg Resp</th>
+                      </tr>
                     </thead>
-                    <tbody>
-                      {users.map((u) => (
-                        <tr key={u.id}>
-                          <td>{u.username}</td>
-                          <td>{u.full_name}</td>
-                          <td><span className="badge bg-secondary">{u.role}</span></td>
-                          <td>{u.department || "-"}</td>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {report.staff_metrics?.map((s, i) => (
+                        <tr key={i}>
+                          <td className="p-2 font-medium text-slate-900 dark:text-slate-100">{s.name}</td>
+                          <td className="p-2 text-slate-500">{s.department || '-'}</td>
+                          <td className="p-2 font-bold text-slate-800 dark:text-slate-200">{s.tickets_handled}</td>
+                          <td className="p-2 text-amber-600">{s.open_tickets}</td>
+                          <td className="p-2 text-slate-400">{s.avg_response_hours != null ? `${s.avg_response_hours}h` : '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -344,28 +322,245 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
-      {tab === "categories" && user?.role === "CAMPUS_ADMIN" && (
-        <div className="card shadow-sm">
-          <div className="card-header bg-white"><h6 className="mb-0">Categories</h6></div>
-          <div className="card-body">
-            <div className="table-responsive">
-              <table className="table table-hover">
-                <thead><tr><th>Name</th><th>SLA Response (hrs)</th><th>SLA Resolution (hrs)</th></tr></thead>
-                <tbody>
-                  {categories.map((c) => (
-                    <tr key={c.id}>
-                      <td className="fw-medium">{c.name}</td>
-                      <td>{c.sla_response_hours}</td>
-                      <td>{c.sla_resolution_hours}</td>
+      {/* USERS TAB */}
+      {tab === 'users' && user?.role === 'CAMPUS_ADMIN' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="custom-card p-5">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-brand-600" /> Add New User
+            </h3>
+            <form onSubmit={createUser} className="space-y-3 text-xs">
+              <input
+                type="text"
+                placeholder="Username *"
+                required
+                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                value={newUser.username}
+                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  value={newUser.first_name}
+                  onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  value={newUser.last_name}
+                  onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                >
+                  <option value="STUDENT">Student</option>
+                  <option value="CR">CR</option>
+                  <option value="STAFF">Staff</option>
+                  <option value="DEPT_ADMIN">Dept Admin (HOD)</option>
+                  <option value="CAMPUS_ADMIN">Campus Admin</option>
+                </select>
+                {STAFF_ROLES.includes(newUser.role) && (
+                  <select
+                    className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                    value={newUser.staff_type}
+                    onChange={(e) => setNewUser({ ...newUser, staff_type: e.target.value })}
+                  >
+                    <option value="">Staff Type</option>
+                    {STAFF_TYPE_OPTIONS.map((st) => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {STAFF_ROLES.includes(newUser.role) && (
+                <select
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  value={newUser.level}
+                  onChange={(e) => setNewUser({ ...newUser, level: parseInt(e.target.value) })}
+                >
+                  <option value={1}>Level 1 Staff</option>
+                  <option value={2}>Level 2 Staff (Senior)</option>
+                  <option value={3}>Level 3 Admin/HOD</option>
+                </select>
+              )}
+              <button type="submit" className="w-full btn-primary text-xs">Create User</button>
+            </form>
+          </div>
+
+          <div className="lg:col-span-2 custom-card p-5">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Campus User Roster & Level Hierarchy</h3>
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                  <tr>
+                    <th className="p-3">Username</th>
+                    <th className="p-3">Full Name</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3">Escalation Level</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td className="p-3 font-mono font-medium text-brand-600">{u.username}</td>
+                      <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{u.full_name || '-'}</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {u.role}
+                        </span>
+                        {STAFF_ROLES.includes(u.role) && u.staff_type && (
+                          <span className="ms-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300">
+                            {u.staff_type}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {STAFF_ROLES.includes(u.role) ? (
+                          <select
+                            className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                            value={u.level || 1}
+                            onChange={(e) => updateUserLevel(u.id, parseInt(e.target.value))}
+                          >
+                            <option value={1}>Level 1</option>
+                            <option value={2}>Level 2</option>
+                            <option value={3}>Level 3</option>
+                          </select>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CATEGORIES TAB WITH INLINE ESTIMATED HOURS EDITING */}
+      {tab === 'categories' && (
+        <div className="custom-card p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Category Configuration & Estimated Target Times</h3>
+            <p className="text-xs text-slate-500">Edit estimated target response & resolution hours per category</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                <tr>
+                  <th className="p-3">Category Name</th>
+                  <th className="p-3">Estimated Target Response (hrs)</th>
+                  <th className="p-3">Estimated Target Resolution (hrs)</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {categories.map((c) => {
+                  const itemState = editedCategories[c.id] || { sla_response_hours: c.sla_response_hours, sla_resolution_hours: c.sla_resolution_hours };
+                  return (
+                    <tr key={c.id}>
+                      <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{c.name}</td>
+                      <td className="p-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={720}
+                          className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                          value={itemState.sla_response_hours}
+                          onChange={(e) => setEditedCategories((prev) => ({
+                            ...prev,
+                            [c.id]: { ...prev[c.id], sla_response_hours: parseInt(e.target.value) || 0 }
+                          }))}
+                        />
+                        <span className="ms-1 text-slate-400">hours</span>
+                      </td>
+                      <td className="p-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={720}
+                          className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                          value={itemState.sla_resolution_hours}
+                          onChange={(e) => setEditedCategories((prev) => ({
+                            ...prev,
+                            [c.id]: { ...prev[c.id], sla_resolution_hours: parseInt(e.target.value) || 0 }
+                          }))}
+                        />
+                        <span className="ms-1 text-slate-400">hours</span>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleSaveCategory(c.id)}
+                          disabled={savingCategory === c.id}
+                          className="btn-primary text-xs py-1 px-3 gap-1"
+                        >
+                          {savingCategory === c.id ? (
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                          ) : (
+                            <Save className="w-3.5 h-3.5" />
+                          )}
+                          <span>Save Changes</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ESCALATION POLICY SETTINGS TAB */}
+      {tab === 'settings' && (
+        <div className="custom-card p-6 space-y-4 max-w-2xl">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Settings className="w-4 h-4 text-brand-600" />
+              Escalation Policy & Direction Control
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">Configure whether tickets can be de-escalated back to lower management levels</p>
+          </div>
+
+          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                Allow 2-Way Escalation & De-escalation
+              </span>
+              <span className="text-xs text-slate-500 block mt-0.5">
+                When enabled, senior staff / HODs can hand back escalated tickets to lower-level staff.
+              </span>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={allowTwoWay}
+                onChange={handleToggleTwoWay}
+              />
+              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+            </label>
           </div>
         </div>
       )}
