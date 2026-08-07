@@ -40,6 +40,7 @@ export const userAPI = {
   list: (params) => api.get("/auth/users/", { params }),
   create: (data) => api.post("/auth/users/", data),
   update: (id, data) => api.patch(`/auth/users/${id}/`, data),
+  remove: (id) => api.delete(`/auth/users/${id}/`),
   setAvailability: (data) => api.post("/auth/users/set_availability/", data),
 };
 
@@ -53,6 +54,10 @@ export const notificationAPI = {
   unreadCount: () => api.get("/notifications/unread_count/"),
   markRead: (id) => api.post(`/notifications/${id}/mark_read/`),
   markAllRead: () => api.post("/notifications/mark_all_read/"),
+  settings: {
+    list: () => api.get("/notifications/settings/"),
+    update: (id, data) => api.patch(`/notifications/settings/${id}/`, data),
+  },
 };
 
 export const escalationAPI = {

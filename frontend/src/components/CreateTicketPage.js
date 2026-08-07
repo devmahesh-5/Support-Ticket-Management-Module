@@ -137,9 +137,10 @@ export default function CreateTicketPage() {
                 name="department"
                 value={form.department}
                 onChange={handleChange}
+                required
                 className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                <option value="">General Support Desk</option>
+                <option value="">Select Department...</option>
                 {[
                   { code: 'CIV', name: 'Civil Engineering' },
                   { code: 'ELE', name: 'Electrical Engineering' },

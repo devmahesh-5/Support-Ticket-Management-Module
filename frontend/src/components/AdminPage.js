@@ -10,10 +10,13 @@ import {
   Check, 
   Plus, 
   Settings,
-  ArrowUpDown
+  ArrowUpDown,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { userAPI, categoryAPI, ticketAPI, systemSettingAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog';
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -42,6 +45,8 @@ export default function AdminPage() {
     staff_type: '',
     level: 1,
   });
+
+  const [editingUser, setEditingUser] = useState(null);
 
   const [editedCategories, setEditedCategories] = useState({});
 
@@ -113,6 +118,41 @@ export default function AdminPage() {
       await userAPI.update(userId, { level: newLevel });
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, level: newLevel } : u));
     } catch {}
+  };
+
+  const updateUser = async (e) => {
+    e.preventDefault();
+    const payload = { ...editingUser };
+    delete payload.id;
+    delete payload.full_name;
+    delete payload.date_joined;
+    delete payload.is_available;
+    if (!payload.staff_type) delete payload.staff_type;
+    if (!payload.department) delete payload.department;
+    if (!payload.password) delete payload.password;
+    if (payload.role === 'STUDENT' || payload.role === 'CR') {
+      delete payload.level;
+      delete payload.staff_type;
+    }
+    try {
+      const res = await userAPI.update(editingUser.id, payload);
+      setUsers((prev) => prev.map((u) => u.id === editingUser.id ? res.data : u));
+      setEditingUser(null);
+      alert('User updated successfully!');
+    } catch (err) {
+      alert(err?.response?.data?.password?.[0] || err?.response?.data?.email?.[0] || 'Failed to update user.');
+    }
+  };
+
+  const deleteUser = async (id, username) => {
+    if (!window.confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+    try {
+      await userAPI.remove(id);
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+      alert('User deleted.');
+    } catch (err) {
+      alert(err?.response?.data?.detail || 'Failed to delete user.');
+    }
   };
 
   const handleToggleTwoWay = async (e) => {
@@ -349,6 +389,14 @@ export default function AdminPage() {
                 value={newUser.email}
                 onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
               />
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder="Password (default: password123)"
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+              />
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
@@ -415,6 +463,7 @@ export default function AdminPage() {
                     <th className="p-3">Full Name</th>
                     <th className="p-3">Role</th>
                     <th className="p-3">Escalation Level</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -447,6 +496,24 @@ export default function AdminPage() {
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
+                      <td className="p-3">
+                        <div className="flex gap-1 justify-end">
+                          <button
+                            onClick={() => setEditingUser({ ...u, password: '' })}
+                            className="p-1.5 rounded hover:bg-brand-50 text-brand-600"
+                            title="Edit user"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteUser(u.id, u.username)}
+                            className="p-1.5 rounded hover:bg-rose-50 text-rose-500"
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -455,6 +522,146 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* EDIT USER DIALOG */}
+      <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
+        {editingUser && (
+          <>
+            <DialogHeader>
+              <div>
+                <DialogTitle>Edit User - {editingUser.username}</DialogTitle>
+                <DialogDescription>Update profile, email, role, or reset the password.</DialogDescription>
+              </div>
+            </DialogHeader>
+            <form onSubmit={updateUser} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Email</label>
+                  <input
+                    type="email"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.email || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Password (blank = keep current)</label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Leave blank to keep current"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.password || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">First Name</label>
+                  <input
+                    type="text"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.first_name || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, first_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Last Name</label>
+                  <input
+                    type="text"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.last_name || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, last_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Role</label>
+                  <select
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.role}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                  >
+                    <option value="STUDENT">Student</option>
+                    <option value="CR">CR</option>
+                    <option value="STAFF">Staff</option>
+                    <option value="DEPT_ADMIN">Dept Admin (HOD)</option>
+                    <option value="CAMPUS_ADMIN">Campus Admin</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Department</label>
+                  <select
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.department || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
+                  >
+                    <option value="">None</option>
+                    <option value="CIV">Civil Engineering</option>
+                    <option value="ELE">Electrical Engineering</option>
+                    <option value="COM">Computer Engineering</option>
+                    <option value="MEC">Mechanical Engineering</option>
+                    <option value="ARC">Architecture</option>
+                    <option value="APP">Applied Sciences</option>
+                    <option value="CIT">IT Support</option>
+                    <option value="FIN">Finance</option>
+                    <option value="ACA">Academic Affairs</option>
+                    <option value="LIB">Library</option>
+                    <option value="FAC">Facilities</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Staff Type</label>
+                  <select
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.staff_type || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, staff_type: e.target.value })}
+                  >
+                    <option value="">None</option>
+                    {STAFF_TYPE_OPTIONS.map((st) => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Escalation Level</label>
+                  <select
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.level || 1}
+                    onChange={(e) => setEditingUser({ ...editingUser, level: parseInt(e.target.value) })}
+                  >
+                    <option value={1}>Level 1 Staff</option>
+                    <option value={2}>Level 2 Staff (Senior)</option>
+                    <option value={3}>Level 3 Admin/HOD</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-600 mb-1 font-medium">Phone</label>
+                  <input
+                    type="text"
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    value={editingUser.phone || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 mt-6 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4"
+                      checked={!!editingUser.is_active}
+                      onChange={(e) => setEditingUser({ ...editingUser, is_active: e.target.checked })}
+                    />
+                    <span className="text-slate-700 font-medium">Account Active</span>
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <DialogClose onClick={() => setEditingUser(null)}>Cancel</DialogClose>
+                <button type="submit" className="btn-primary text-xs">Save Changes</button>
+              </div>
+            </form>
+          </>
+        )}
+      </Dialog>
 
       {/* CATEGORIES TAB WITH INLINE ESTIMATED HOURS EDITING */}
       {tab === 'categories' && (
