@@ -58,6 +58,10 @@ def evaluate_ticket(ticket, now=None):
 
     policy = attach_policy(ticket, now=now)
     if policy is None:
+        # No policy governs the current staff level. If the ticket already
+        # entered the escalation chain and the SLA is still breached, keep
+        # stepping upward (e.g. HOD -> campus admin) until the chain ends.
+        _auto_step_when_breached(ticket, now)
         return
 
     ensure_deadlines(ticket, policy, now)
@@ -105,6 +109,32 @@ def evaluate_ticket(ticket, now=None):
         _apply_priority_mapping(ticket, policy)
 
     _auto_escalate(ticket, policy, now, res_breached)
+
+
+def _auto_step_when_breached(ticket, now):
+    """Escalate beyond the configured policy chain when the SLA stays
+    breached and no policy governs the current level. One hop per pass, up
+    to the campus admin (Admin Review)."""
+    if ticket.status in (Ticket.Status.RESOLVED, Ticket.Status.CLOSED):
+        return
+    if (ticket.escalation_level or 0) >= assign_svc.MAX_LEVEL:
+        return
+    if not ticket.sla_deadline or now < ticket.sla_deadline:
+        return
+    if not ticket.sla_breached_at:
+        return
+
+    key = f"auto:stepped:{ticket.escalation_level or 0}"
+    if already_logged(ticket, key):
+        return
+
+    log(ticket=ticket, action=EscalationHistory.Action.SYSTEM,
+        message="SLA still breached; auto-escalating to the next support level",
+        key=key)
+    assign_svc.escalate_ticket(
+        ticket, actor=None,
+        note="Auto-escalated to the next support level after SLA breach",
+    )
 
 
 def _category_sla_hours(ticket):
@@ -289,19 +319,18 @@ def _auto_escalate(ticket, policy, now, res_breached):
         return
     if not ticket.sla_breached_at:
         return
-    if already_logged(ticket, "auto:escalated"):
-        return
-    ticket_level = ticket.escalation_level or 1
-    if policy.from_level and ticket_level != policy.from_level:
-        return
 
     delay = timedelta(minutes=policy.escalation_delay_minutes)
     if policy.escalation_delay_minutes > 0 and now < ticket.sla_breached_at + delay:
         return
 
+    key = f"auto:escalated:{ticket.escalation_level or 0}"
+    if already_logged(ticket, key):
+        return
+
     log(ticket=ticket, action=EscalationHistory.Action.SYSTEM, policy=policy,
         message="SLA breach action triggered; executing configured action",
-        key="auto:escalated")
+        key=key)
     if policy.auto_escalate:
         assign_svc.escalate_ticket(
             ticket, policy=policy, level=policy.to_level,

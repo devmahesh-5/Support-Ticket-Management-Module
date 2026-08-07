@@ -27,7 +27,7 @@ export function Dialog({ open, onOpenChange, children, className }) {
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900",
+          "relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl",
           className
         )}
       >
@@ -47,11 +47,11 @@ export function DialogHeader({ children, className }) {
 }
 
 export function DialogTitle({ children, className }) {
-  return <h2 className={cn("text-lg font-semibold text-slate-900 dark:text-white", className)}>{children}</h2>;
+  return <h2 className={cn("text-lg font-semibold text-slate-900", className)}>{children}</h2>;
 }
 
 export function DialogDescription({ children, className }) {
-  return <p className={cn("mt-1 text-sm text-slate-500 dark:text-slate-400", className)}>{children}</p>;
+  return <p className={cn("mt-1 text-sm text-slate-500", className)}>{children}</p>;
 }
 
 export function DialogClose({ onClick, children, ...props }) {

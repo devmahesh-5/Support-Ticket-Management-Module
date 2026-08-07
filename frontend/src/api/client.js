@@ -17,8 +17,6 @@ export const authAPI = {
 
 export const ticketAPI = {
   list: (params) => api.get("/tickets/", { params }),
-  myTickets: (params) => api.get("/tickets/my_tickets/", { params }),
-  departmentTickets: (params) => api.get("/tickets/department_tickets/", { params }),
   detail: (id) => api.get(`/tickets/${id}/`),
   create: (data) => api.post("/tickets/", data),
   addMessage: (id, data) => api.post(`/tickets/${id}/add_message/`, data),
@@ -39,7 +37,7 @@ export const categoryAPI = {
 };
 
 export const userAPI = {
-  list: () => api.get("/auth/users/"),
+  list: (params) => api.get("/auth/users/", { params }),
   create: (data) => api.post("/auth/users/", data),
   update: (id, data) => api.patch(`/auth/users/${id}/`, data),
   setAvailability: (data) => api.post("/auth/users/set_availability/", data),
@@ -69,9 +67,6 @@ export const escalationAPI = {
     create: (data) => api.post("/escalations/rules/", data),
     update: (id, data) => api.patch(`/escalations/rules/${id}/`, data),
     remove: (id) => api.delete(`/escalations/rules/${id}/`),
-  },
-  history: {
-    list: (params) => api.get("/escalations/history/", { params }),
   },
   dashboard: {
     get: () => api.get("/escalations/dashboard/dashboard/"),

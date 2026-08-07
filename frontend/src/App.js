@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ThemeProvider } from './contexts/ThemeContext';
 
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
@@ -24,7 +23,7 @@ function AppLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f17] flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-600"></div>
           <span className="text-sm text-slate-500">Restoring your session...</span>
@@ -36,7 +35,7 @@ function AppLayout() {
   if (!user) return <Navigate to="/login" replace />;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f17] text-slate-900 dark:text-slate-100 flex transition-colors">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex transition-colors">
       {/* Sidebar Navigation */}
       <Sidebar 
         collapsed={collapsed} 
@@ -74,14 +73,12 @@ function AppLayout() {
 export default function App() {
   return (
     <Router>
-      <ThemeProvider>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/*" element={<AppLayout />} />
-          </Routes>
-        </AuthProvider>
-      </ThemeProvider>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/*" element={<AppLayout />} />
+        </Routes>
+      </AuthProvider>
     </Router>
   );
 }

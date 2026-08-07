@@ -104,6 +104,11 @@ class EscalationPolicy(TimeStampedModel):
     class Meta:
         ordering = ["name"]
 
+    def clean(self):
+        if self.from_level and self.to_level and self.from_level > self.to_level:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("From level cannot be higher than the To level.")
+
     def __str__(self):
         return self.name
 

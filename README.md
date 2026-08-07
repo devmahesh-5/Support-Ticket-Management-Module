@@ -30,9 +30,9 @@ This section walks through the system from each user's point of view: what happe
 | Level | Status shown | Who | How a ticket gets here |
 | ----- | ------------ | --- | ---------------------- |
 | 0 | *Open* | L1 staff | New ticket routing |
-| 1 | *Escalated L1* | L1 staff | Manual escalation |
-| 2 | *Escalated L2* | L2 staff | SLA breach (auto) or manual |
-| 3 | *Admin Review* | Department HOD | Manual escalation, or fallback from lower levels |
+| 1 | *Escalated L1* | L2 staff | Escalation policy `L1 → L2` — manual, or auto on SLA breach |
+| 2 | *Escalated L2* | Department HOD | Escalation policy `L2 → L3` — manual, or auto on SLA breach |
+| 3 | *Admin Review* | Campus Admin | Final hop past the configured policies — auto on continued breach, or manual |
 
 **The SLA clock** — every category has *response* and *resolution* hours. The clock **starts the moment a ticket is created** and **stops when the assigned staff clicks "Start Working"** (status becomes *In Progress*), which also records the first response. While a ticket is *In Progress* it is no longer tracked by the SLA engine.
 
@@ -69,7 +69,7 @@ This section walks through the system from each user's point of view: what happe
 
 **Case 4 — I feel my ticket is stuck**
 
-- I can click **Escalate** on the ticket. Each click raises the level one step: `0 → 1 → 2 → 3`. At each hop the ticket is reassigned — same specialty where possible, ending at the HOD at level 3. I cannot escalate a *Resolved* or *Closed* ticket.
+- I can click **Escalate** on the ticket. Each click raises the level one step: `0 → 1 → 2 → 3`. At each hop the ticket is reassigned — same specialty where possible — ending at the **Campus Admin** (level 3, *Admin Review*). I cannot escalate a *Resolved* or *Closed* ticket.
 
 **CR note** — a CR's tickets are automatically set to their **class department**, so class-wide issues go to the right department's queue from the start. Everything else works the same as a student.
 
@@ -118,9 +118,9 @@ This section walks through the system from each user's point of view: what happe
 
 - The ticket comes to me directly (level raised, status *Escalated L2*). I see it in my Assigned list and hand it to the correct person.
 
-**Case 3 — Someone escalates a ticket all the way to me**
+**Case 3 — Someone escalates a ticket all the way to the top**
 
-- At level 3 the ticket becomes *Admin Review* and is assigned to me (or the Campus Admin if my department has no HOD).
+- At level 3 the ticket becomes *Admin Review* and is assigned to the **Campus Admin**.
 
 **Case 4 — I want to send a ticket back down**
 
@@ -150,7 +150,8 @@ This section walks through the system from each user's point of view: what happe
 | 50% / 75% SLA time | Warnings sent | In-app/email to assigned staff + manager |
 | Breach + policy **auto ON** | Auto-escalate | Level → policy's `to_level`, reassigned to same-specialty staff at that level; if none, HOD |
 | Breach + policy **auto OFF** | Pushed to Escalation Queue | HOD assigns from SLA Dashboard |
-| Manual escalation | Level +1 each click | `0 → 1 → 2 → 3`, same specialty per hop, ends at HOD |
+| Breach persists past the last policy | Keeps auto-escalating | One hop per engine pass: L2 staff → HOD → Campus Admin (*Admin Review*) |
+| Manual escalation | Level +1 each click | `0 → 1 → 2 → 3`, same specialty per hop, ends at Campus Admin |
 | De-escalation | Level −1 | HOD/admin only, status back to *Escalated L1* / *In Progress* |
 | Resolve / close | Ticket leaves SLA tracking | SLA engine no longer touches it |
 
@@ -161,8 +162,9 @@ This section walks through the system from each user's point of view: what happe
 3. Deadline passes with no first response → the policy matches (department/category/priority):
    - **auto ON** → ticket raised to the policy's target level, assigned to the same-specialty staff at that level. If none exists, the HOD gets it.
    - **auto OFF** → ticket moved to the Escalation Queue.
-4. Every action (policy applied, warning sent, breach, escalation, reassignment) is written to the ticket's **audit trail**, so the full history is visible.
-5. Whoever ends up with the ticket clicks **Start Working**, replies (first response recorded), and works it to resolution.
+4. If the SLA **stays** breached, every engine pass advances the ticket one more step up the chain — L2 staff → HOD → Campus Admin — until the chain ends at *Admin Review* (level 3) with the Campus Admin. Each step is logged once (`auto:escalated:N` for policy hops, `auto:stepped:N` past the last policy) so the engine never double-fires on the same level.
+5. Every action (policy applied, warning sent, breach, escalation, reassignment) is written to the ticket's **audit trail**, so the full history is visible.
+6. Whoever ends up with the ticket clicks **Start Working**, replies (first response recorded), and works it to resolution.
 
 ### How escalation is configured (admin)
 
@@ -176,7 +178,7 @@ Escalation is **policy-driven**, not hardcoded. Each **Escalation Policy** sets:
 
 Optional **Escalation Rules** (IF conditions / THEN actions) add extra triggers, e.g. escalate on no-activity hours, bump priority, notify, or assign a specific user or level.
 
-The only hardcoded behavior is *who* receives the ticket: least-busy available staff at the target level **matching the category's specialty**, then the department HOD, then the Campus Admin.
+The only hardcoded behavior is *who* receives the ticket: least-busy available staff at the target level **matching the category's specialty**, then the department HOD, then the Campus Admin — and the one hardcoded escalation step: once a ticket has exhausted its configured policies, a still-breached ticket keeps stepping up automatically until it reaches the **Campus Admin** (*Admin Review*).
 
 ---
 

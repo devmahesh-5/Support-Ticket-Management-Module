@@ -97,12 +97,17 @@ def assign_ticket(ticket):
     filters = {
         "role": User.Role.STAFF,
         "department": target_dept,
+        "level": 1,
         "is_available": True,
     }
     if target_staff_type:
         filters["staff_type"] = target_staff_type
 
     assigned = least_loaded_staff(filters)
+
+    if not assigned:
+        filters.pop("level", None)
+        assigned = least_loaded_staff(filters)
 
     if not assigned:
         assigned = User.objects.filter(

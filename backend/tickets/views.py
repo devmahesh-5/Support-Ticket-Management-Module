@@ -73,7 +73,8 @@ class TicketViewSet(viewsets.ModelViewSet):
         elif user.role == User.Role.DEPT_ADMIN:
             qs = qs.filter(
                 Q(department=user.department) |
-                Q(assigned_to__department=user.department)
+                Q(assigned_to__department=user.department) |
+                Q(created_by=user)
             )
         elif user.role == User.Role.STAFF:
             qs = qs.filter(Q(assigned_to=user) | Q(created_by=user))
@@ -81,10 +82,11 @@ class TicketViewSet(viewsets.ModelViewSet):
             qs = qs.filter(created_by=user)
 
         mine = self.request.query_params.get("mine")
-        if user.role == User.Role.STAFF and mine == "assigned":
-            qs = qs.filter(assigned_to=user)
-        elif user.role == User.Role.STAFF and mine == "created":
-            qs = qs.filter(created_by=user)
+        if user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]:
+            if mine == "assigned":
+                qs = qs.filter(assigned_to=user)
+            elif mine == "created":
+                qs = qs.filter(created_by=user)
         return qs
 
     def _visible_messages(self):
@@ -104,19 +106,23 @@ class TicketViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        ticket = serializer.save(created_by=self.request.user)
-        if not ticket.department and self.request.user.role in [User.Role.CR, User.Role.STUDENT]:
-            ticket.department = self.request.user.department
-        ticket.save()
-        assign_ticket(ticket)
+        user = self.request.user
+        ticket = serializer.save(created_by=user)
+        if not ticket.department and user.role in [User.Role.CR, User.Role.STUDENT]:
+            ticket.department = user.department
+        ticket.escalation_level = 0
         ticket.last_activity_at = timezone.now()
-        ticket.save(update_fields=["last_activity_at", "updated_at"])
+        ticket.save(update_fields=["department", "escalation_level", "last_activity_at", "updated_at"])
+
+        if not (user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN] and ticket.assigned_to_id):
+            assign_ticket(ticket)
+        ticket.refresh_from_db()
 
         from escalations.services.engine import evaluate_ticket
         evaluate_ticket(ticket)
 
         StatusLog.objects.create(
-            ticket=ticket, to_status="OPEN", changed_by=self.request.user,
+            ticket=ticket, to_status="OPEN", changed_by=user,
             note="Ticket created"
         )
         if ticket.assigned_to:
@@ -274,57 +280,39 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def escalate(self, request, pk=None):
-        from escalations.services.assign import resolve_assignee, status_for_level
+        from escalations.services import assign as assign_svc
         ticket = self.get_object()
         user = request.user
         if ticket.status in (Ticket.Status.RESOLVED, Ticket.Status.CLOSED):
             return Response({"error": "Cannot escalate a resolved or closed ticket"}, status=status.HTTP_400_BAD_REQUEST)
-        level = min(ticket.escalation_level + 1, 3)
+        if ticket.escalation_level >= 3:
+            return Response({"error": "Ticket is already at the highest escalation level"}, status=status.HTTP_400_BAD_REQUEST)
 
-        assignee = resolve_assignee(level=level, ticket=ticket)
-        if assignee:
-            ticket.assigned_to = assignee
-        ticket.escalation_level = level
-        ticket.status = status_for_level(level)
-        ticket.save()
-
-        StatusLog.objects.create(
-            ticket=ticket, from_status="", to_status=ticket.status,
-            changed_by=user, note=f"Escalated to level {level}"
+        assignee = assign_svc.escalate_ticket(
+            ticket, actor=user, note="Manually escalated",
         )
-
-        if ticket.assigned_to:
-            Notification.objects.create(
-                user=ticket.assigned_to,
-                title=f"Ticket Escalated (Level {level})",
-                message=f"Ticket {ticket.ticket_id} has been escalated to you.",
-                notification_type="ESCALATION",
-                ticket=ticket,
-            )
 
         return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     def deescalate(self, request, pk=None):
+        from escalations.services import assign as assign_svc
         setting, _ = SystemSetting.objects.get_or_create(id=1)
         if not setting.allow_two_way_escalation:
             return Response({"error": "Two-way escalation is disabled by administrator policy"}, status=status.HTTP_403_FORBIDDEN)
-        
-        ticket = self.get_object()
-        if ticket.escalation_level > 0:
-            ticket.escalation_level -= 1
-            if ticket.escalation_level == 0:
-                ticket.status = Ticket.Status.IN_PROGRESS
-            elif ticket.escalation_level == 1:
-                ticket.status = Ticket.Status.ESCALATED_L1
-            ticket.save()
 
-            StatusLog.objects.create(
-                ticket=ticket, from_status="", to_status=ticket.status,
-                changed_by=request.user, note=f"De-escalated to level {ticket.escalation_level}"
-            )
-            return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
-        return Response({"error": "Ticket is already at lowest escalation level"}, status=status.HTTP_400_BAD_REQUEST)
+        ticket = self.get_object()
+        if ticket.status in (Ticket.Status.RESOLVED, Ticket.Status.CLOSED):
+            return Response({"error": "Cannot de-escalate a resolved or closed ticket"}, status=status.HTTP_400_BAD_REQUEST)
+        if ticket.escalation_level <= 0:
+            return Response({"error": "Ticket is already at the lowest escalation level"}, status=status.HTTP_400_BAD_REQUEST)
+
+        assignee = assign_svc.deescalate_ticket(
+            ticket, policy=ticket.escalation_policy,
+            actor=request.user, note="Manually de-escalated",
+        )
+
+        return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     def change_priority(self, request, pk=None):
@@ -416,10 +404,11 @@ class TicketViewSet(viewsets.ModelViewSet):
         qs = self.get_queryset()
 
         mine = request.query_params.get("mine")
-        if user.role == User.Role.STAFF and mine == "assigned":
-            qs = qs.filter(assigned_to=user)
-        elif user.role == User.Role.STAFF and mine == "created":
-            qs = qs.filter(created_by=user)
+        if user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]:
+            if mine == "assigned":
+                qs = qs.filter(assigned_to=user)
+            elif mine == "created":
+                qs = qs.filter(created_by=user)
 
         open_count = qs.filter(status__in=["OPEN", "IN_PROGRESS", "REOPENED"]).count()
         closed_count = qs.filter(status__in=["RESOLVED", "CLOSED"]).count()
@@ -473,10 +462,6 @@ class TicketViewSet(viewsets.ModelViewSet):
         recent = qs.order_by("-updated_at")[:4]
         recent_serializer = TicketListSerializer(recent, many=True, context={"request": request})
 
-        staff_metrics = self._staff_metrics(qs)
-
-        setting, _ = SystemSetting.objects.get_or_create(id=1)
-
         return Response({
             "open": open_count,
             "closed": closed_count,
@@ -489,8 +474,6 @@ class TicketViewSet(viewsets.ModelViewSet):
             "by_category": by_category,
             "activity_feed": activity_feed,
             "recent": recent_serializer.data,
-            "staff_metrics": staff_metrics,
-            "allow_two_way_escalation": setting.allow_two_way_escalation,
         })
 
     @staticmethod

@@ -44,9 +44,9 @@ export function FormField({ name, label, description, children }) {
           {label && <Label htmlFor={name}>{label}</Label>}
           {typeof children === "function" ? children({ field, error }) : children}
           {description && !error && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p>
+            <p className="text-xs text-slate-500">{description}</p>
           )}
-          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error.message}</p>}
+          {error && <p className="text-xs text-rose-600">{error.message}</p>}
         </div>
       )}
     />

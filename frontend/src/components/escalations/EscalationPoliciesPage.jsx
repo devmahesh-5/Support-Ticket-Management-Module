@@ -29,7 +29,7 @@ export default function EscalationPoliciesPage() {
   const columns = useMemo(() => [
     { accessorKey: "name", header: "Policy", cell: (c) => (
         <div>
-          <span className="font-medium text-slate-900 dark:text-slate-100">{c.getValue()}</span>
+          <span className="font-medium text-slate-900">{c.getValue()}</span>
           {c.row.original.description && <p className="text-xs text-slate-400 truncate max-w-xs">{c.row.original.description}</p>}
         </div>
       ) },
@@ -57,7 +57,7 @@ export default function EscalationPoliciesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <ShieldAlert className="w-6 h-6 text-brand-600" /> Escalation Policies
           </h1>
           <p className="text-xs text-slate-500">SLA thresholds, notifications, auto escalation and rules - all configuration, no code.</p>

@@ -56,7 +56,7 @@ function RowActions({ row, mode, staff, reload }) {
       {expanded === "assign" && (
         <div className="flex items-center gap-1.5">
           <select
-            className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900"
+            className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs"
             value={value}
             onChange={(e) => setValue(e.target.value)}
           >
@@ -75,7 +75,7 @@ function RowActions({ row, mode, staff, reload }) {
       {expanded === "priority" && (
         <div className="flex items-center gap-1.5">
           <select
-            className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900"
+            className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs"
             value={value}
             onChange={(e) => setValue(e.target.value)}
           >
@@ -144,10 +144,10 @@ function DashboardTable({ title, rows, mode, staff, reload, emptyText }) {
 }
 
 const KPIS = [
-  { key: "approaching", label: "Approaching SLA", icon: Clock, tone: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/40" },
-  { key: "breached", label: "Breached SLA", icon: AlertOctagon, tone: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/40" },
-  { key: "escalation_queue", label: "Escalation Queue", icon: Inbox, tone: "text-brand-600", bg: "bg-brand-50 dark:bg-brand-950/40" },
-  { key: "waiting_assignment", label: "Waiting Assignment", icon: UserX, tone: "text-sky-500", bg: "bg-sky-50 dark:bg-sky-950/40" },
+  { key: "approaching", label: "Approaching SLA", icon: Clock, tone: "text-amber-500", bg: "bg-amber-50" },
+  { key: "breached", label: "Breached SLA", icon: AlertOctagon, tone: "text-rose-500", bg: "bg-rose-50" },
+  { key: "escalation_queue", label: "Escalation Queue", icon: Inbox, tone: "text-brand-600", bg: "bg-brand-50" },
+  { key: "waiting_assignment", label: "Waiting Assignment", icon: UserX, tone: "text-sky-500", bg: "bg-sky-50" },
 ];
 
 export default function EscalationDashboardPage() {
@@ -174,7 +174,7 @@ export default function EscalationDashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Gauge className="w-6 h-6 text-brand-600" /> Escalation Dashboard
           </h1>
           <p className="text-xs text-slate-500">Tickets tracked by the SLA escalation engine. Take direct action below.</p>
@@ -195,7 +195,7 @@ export default function EscalationDashboardPage() {
                   <Icon className={`w-5 h-5 ${k.tone}`} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-slate-900 dark:text-white">{count}</p>
+                  <p className="text-2xl font-bold text-slate-900">{count}</p>
                   <p className="text-xs text-slate-500">{k.label}</p>
                 </div>
               </CardContent>
