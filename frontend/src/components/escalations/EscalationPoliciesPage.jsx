@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2, ShieldAlert } from "lucide-react";
+import { Plus, Pencil, Trash2, ShieldAlert, BellRing } from "lucide-react";
 import { escalationAPI } from "../../api/client";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -8,11 +8,13 @@ import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { PRIORITIES, DEPARTMENTS } from "./constants";
 import PolicyEditor from "./PolicyEditor";
+import NotificationTypesTab from "./NotificationTypesTab";
 
 export default function EscalationPoliciesPage() {
   const [policies, setPolicies] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [tab, setTab] = useState("policies");
 
   const load = () => escalationAPI.policies.list().then((res) => setPolicies(res.data.results || res.data || [])).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -63,11 +65,32 @@ export default function EscalationPoliciesPage() {
           <p className="text-xs text-slate-500">SLA thresholds, notifications, auto escalation and rules - all configuration, no code.</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="h-4 w-4" /> New Policy</Button>
+          {tab === "policies" && (
+            <Button onClick={() => { setEditing(null); setOpen(true); }}><Plus className="h-4 w-4" /> New Policy</Button>
+          )}
         </div>
       </div>
 
-      <Card>
+      <div className="flex gap-1 border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setTab("policies")}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${tab === "policies" ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+        >
+          Escalation Policies
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("types")}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors flex items-center gap-2 ${tab === "types" ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+        >
+          <BellRing className="h-4 w-4" /> Notification Types
+        </button>
+      </div>
+
+      {tab === "types" && <NotificationTypesTab />}
+
+      {tab === "policies" && <Card>
         <CardHeader><CardTitle>Policies ({policies.length})</CardTitle></CardHeader>
         <CardContent>
           <Table>
@@ -84,7 +107,7 @@ export default function EscalationPoliciesPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+      </Card>}
 
       <PolicyEditor open={open} onClose={() => setOpen(false)} onSaved={load} editing={editing} />
     </div>

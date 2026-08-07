@@ -61,7 +61,6 @@ export const RULE_OPS = [
 export const RULE_ACTIONS = [
   { value: "escalate_now", label: "Escalate Now" },
   { value: "increase_priority", label: "Increase Priority" },
-  { value: "notify", label: "Notify" },
   { value: "assign_user", label: "Assign User" },
   { value: "assign_level", label: "Assign Staff Level (1-3)" },
   { value: "add_to_escalation_queue", label: "Add To Escalation Queue" },
