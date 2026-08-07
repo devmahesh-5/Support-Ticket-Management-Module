@@ -55,20 +55,29 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
+        target_dept = self.request.query_params.get("department")
         if user.role == User.Role.DEPT_ADMIN:
-            qs = qs.filter(department=user.department)
+            qs = qs.filter(department=(target_dept or user.department))
         elif user.role == User.Role.STAFF:
-            qs = qs.filter(department=user.department)
+            qs = qs.filter(department=(target_dept or user.department))
         elif user.role in [User.Role.STUDENT, User.Role.CR]:
             qs = qs.filter(id=user.id)
+        if target_dept:
+            qs = qs.filter(role__in=[
+                User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
+            ])
         return qs
 
     @action(detail=False, methods=["post"])
     def set_availability(self, request):
         user = request.user
-        if user.role != User.Role.STAFF:
+        if user.role not in [
+            User.Role.STAFF,
+            User.Role.DEPT_ADMIN,
+            User.Role.CAMPUS_ADMIN,
+        ]:
             return Response(
-                {"error": "Only staff can update availability"},
+                {"error": "Only staff and admins can update availability"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         is_available = request.data.get("is_available")

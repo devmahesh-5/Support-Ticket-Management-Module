@@ -38,9 +38,8 @@ export default function TicketDetailPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [ticketRes, usersRes, settingRes] = await Promise.all([
+        const [ticketRes, settingRes] = await Promise.all([
           ticketAPI.detail(id),
-          isAdmin ? userAPI.list() : Promise.resolve({ data: [] }),
           systemSettingAPI.get().catch(() => ({ data: { allow_two_way_escalation: true } })),
         ]);
         const tData = ticketRes.data;
@@ -49,8 +48,16 @@ export default function TicketDetailPage() {
         setSelectedPriority(tData.priority || 'MEDIUM');
         setAllowTwoWay(settingRes.data.allow_two_way_escalation);
 
-        const usersData = usersRes.data.results || usersRes.data;
-        setUsers(Array.isArray(usersData) ? usersData : []);
+        if (isAdmin) {
+          const params = tData.target_department ? { department: tData.target_department } : {};
+          const usersRes = await userAPI.list(params);
+          const usersData = usersRes.data.results || usersRes.data;
+          let list = Array.isArray(usersData) ? usersData : [];
+          if (tData.assigned_to && !list.some((u) => u.id === tData.assigned_to.id)) {
+            list = [tData.assigned_to, ...list];
+          }
+          setUsers(list);
+        }
       } catch {} finally {
         setLoading(false);
       }
@@ -137,7 +144,7 @@ export default function TicketDetailPage() {
     return (
       <div className="custom-card p-12 text-center max-w-lg mx-auto">
         <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-3" />
-        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Ticket Not Found</h3>
+        <h3 className="text-lg font-bold text-slate-800">Ticket Not Found</h3>
         <p className="text-xs text-slate-500 mt-1 mb-4">The ticket request may have been removed or access is restricted.</p>
         <Link to="/tickets" className="btn-primary text-xs">Return to Ticket Directory</Link>
       </div>
@@ -203,7 +210,7 @@ export default function TicketDetailPage() {
           {canDeescalate && (
             <button
               onClick={handleDeescalate}
-              className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-300 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors flex items-center gap-1.5"
             >
               <ArrowDownCircle className="w-3.5 h-3.5" />
               <span>De-escalate Ticket</span>
@@ -213,7 +220,7 @@ export default function TicketDetailPage() {
           {canEscalate && (
             <button
               onClick={handleEscalate}
-              className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors flex items-center gap-1.5"
             >
               <AlertTriangle className="w-3.5 h-3.5" />
               <span>Escalate Ticket</span>
@@ -240,30 +247,30 @@ export default function TicketDetailPage() {
           <div className="custom-card p-6 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <span className="font-mono text-xs font-bold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950 px-2 py-0.5 rounded">
+                <span className="font-mono text-xs font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded">
                   {ticket.ticket_id}
                 </span>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white mt-2 leading-tight">
+                <h1 className="text-xl font-bold text-slate-900 mt-2 leading-tight">
                   {ticket.title}
                 </h1>
               </div>
 
               <span className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                ticket.status === 'OPEN' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' :
-                ticket.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' :
-                ticket.status === 'RESOLVED' || ticket.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' :
-                'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                ticket.status === 'OPEN' ? 'bg-blue-100 text-blue-800' :
+                ticket.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' :
+                ticket.status === 'RESOLVED' || ticket.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
+                'bg-rose-100 text-rose-800'
               }`}>
                 {ticket.status?.replace('_', ' ')}
               </span>
             </div>
 
             {/* Description Block */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/80 dark:border-slate-800">
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
                 Original Request Description
               </span>
-              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+              <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">
                 {ticket.description}
               </p>
             </div>
@@ -271,7 +278,7 @@ export default function TicketDetailPage() {
 
           {/* Conversation Stream */}
           <div className="custom-card p-6 space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-200">
               <FileText className="w-4 h-4 text-brand-600" />
               Conversation & Reply History ({ticket.messages?.length || 0})
             </h3>
@@ -279,19 +286,19 @@ export default function TicketDetailPage() {
             <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
               {/* Creator original post entry */}
               <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 font-bold flex items-center justify-center text-xs shrink-0">
+                <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">
                   {(ticket.created_by?.full_name || ticket.created_by?.username || 'U')[0].toUpperCase()}
                 </div>
-                <div className="flex-1 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800">
+                <div className="flex-1 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-bold text-slate-900 dark:text-slate-100">
+                    <span className="font-bold text-slate-900">
                       {ticket.created_by?.full_name || ticket.created_by?.username}
                     </span>
                     <span className="text-slate-400">
                       {new Date(ticket.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                  <p className="text-xs text-slate-700 whitespace-pre-wrap">
                     {ticket.description}
                   </p>
                 </div>
@@ -301,10 +308,10 @@ export default function TicketDetailPage() {
               {ticket.messages?.map((msg) => (
                 <div 
                   key={msg.id}
-                  className={`flex gap-3 ${msg.is_internal_note ? 'bg-amber-50/50 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200 dark:border-amber-800' : ''}`}
+                  className={`flex gap-3 ${msg.is_internal_note ? 'bg-amber-50/50 p-3 rounded-xl border border-amber-200' : ''}`}
                 >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                    msg.is_internal_note ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                    msg.is_internal_note ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-700'
                   }`}>
                     {(msg.author_name || 'U')[0].toUpperCase()}
                   </div>
@@ -312,7 +319,7 @@ export default function TicketDetailPage() {
                   <div className="flex-1">
                     <div className="flex items-center justify-between text-xs mb-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 dark:text-slate-100">{msg.author_name}</span>
+                        <span className="font-bold text-slate-900">{msg.author_name}</span>
                         {msg.is_internal_note && (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white flex items-center gap-1">
                             <Lock className="w-2.5 h-2.5" /> Internal Note
@@ -321,7 +328,7 @@ export default function TicketDetailPage() {
                       </div>
                       <span className="text-slate-400">{new Date(msg.created_at).toLocaleString()}</span>
                     </div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                    <p className="text-xs text-slate-700 whitespace-pre-wrap">
                       {msg.content}
                     </p>
                   </div>
@@ -330,11 +337,11 @@ export default function TicketDetailPage() {
             </div>
 
             {/* Reply Input Form */}
-            <form onSubmit={handleReply} className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+            <form onSubmit={handleReply} className="pt-4 border-t border-slate-200 space-y-3">
               <div>
                 <textarea
                   rows={3}
-                  className="w-full p-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   placeholder="Type your response or resolution note here..."
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
@@ -345,7 +352,7 @@ export default function TicketDetailPage() {
               <div className="flex items-center justify-between">
                 <div>
                   {isStaff && (
-                    <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                    <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
                       <input
                         type="checkbox"
                         className="rounded text-amber-600 focus:ring-amber-500"
@@ -383,21 +390,21 @@ export default function TicketDetailPage() {
             </h3>
 
             {/* Department */}
-            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
               <span className="text-slate-500">Department</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
+              <span className="font-semibold text-slate-800">
                 {ticket.department || 'General Support'}
               </span>
             </div>
 
             {/* Priority Level with Explicit Update Button */}
-            <div className="py-2 border-b border-slate-100 dark:border-slate-800 space-y-1.5">
+            <div className="py-2 border-b border-slate-100 space-y-1.5">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-slate-500">Priority Level</span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                   ticket.priority === 'CRITICAL' ? 'bg-rose-500 text-white' :
                   ticket.priority === 'HIGH' ? 'bg-amber-500 text-white' :
-                  'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  'bg-slate-200 text-slate-700'
                 }`}>
                   {ticket.priority}
                 </span>
@@ -405,7 +412,7 @@ export default function TicketDetailPage() {
               {isStaff && (
                 <form onSubmit={handlePrioritySubmit} className="flex gap-2 pt-1">
                   <select
-                    className="flex-1 px-2 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+                    className="flex-1 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                     value={selectedPriority}
                     onChange={(e) => setSelectedPriority(e.target.value)}
                   >
@@ -422,27 +429,27 @@ export default function TicketDetailPage() {
             </div>
 
             {/* Category */}
-            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
               <span className="text-slate-500">Category</span>
-              <span className="font-medium text-brand-600 dark:text-brand-400">
+              <span className="font-medium text-brand-600">
                 {ticket.category?.name || 'Uncategorized'}
               </span>
             </div>
 
             {/* Staff Assignment with Explicit Update Button */}
-            <div className="py-2 border-b border-slate-100 dark:border-slate-800 space-y-1.5">
+            <div className="py-2 border-b border-slate-100 space-y-1.5">
               <span className="text-xs text-slate-500 block">Assigned Staff</span>
               {canReassign ? (
                 <form onSubmit={handleReassignSubmit} className="space-y-2">
                   <select
-                    className="w-full px-2 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+                    className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                     value={selectedStaff}
                     onChange={(e) => setSelectedStaff(e.target.value)}
                   >
                     <option value="">Unassigned</option>
-                    {users.filter(u => ['STAFF', 'DEPT_ADMIN'].includes(u.role)).map(u => (
+                    {users.filter(u => ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(u.role)).map(u => (
                       <option key={u.id} value={u.id}>
-                        {u.full_name || u.username} ({u.role} - L{u.level || 1})
+                        {u.full_name || u.username} ({u.role === 'DEPT_ADMIN' ? 'HOD' : u.role === 'CAMPUS_ADMIN' ? 'Admin' : `${u.role} - L${u.level || 1}`})
                       </option>
                     ))}
                   </select>
@@ -451,18 +458,18 @@ export default function TicketDetailPage() {
                   </button>
                 </form>
               ) : (
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+                <span className="text-xs font-semibold text-slate-800 block">
                   {ticket.assigned_to?.full_name || ticket.assigned_to?.username || 'Unassigned'}
                 </span>
               )}
             </div>
 
             {/* Estimated Completion Deadline (Derived from Category) */}
-            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
               <span className="text-slate-500 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" /> Estimated Completion Time
               </span>
-              <span className={`font-semibold ${ticket.sla_deadline && new Date(ticket.sla_deadline) < new Date() ? 'text-rose-600 font-bold' : 'text-slate-800 dark:text-slate-200'}`}>
+              <span className={`font-semibold ${ticket.sla_deadline && new Date(ticket.sla_deadline) < new Date() ? 'text-rose-600 font-bold' : 'text-slate-800'}`}>
                 {ticket.sla_deadline ? new Date(ticket.sla_deadline).toLocaleString() : 'N/A'}
               </span>
             </div>
@@ -476,14 +483,14 @@ export default function TicketDetailPage() {
               </h3>
               <div className="space-y-3 max-h-60 overflow-y-auto">
                 {ticket.status_logs?.map((log, i) => (
-                  <div key={i} className="text-xs p-2 bg-slate-50 dark:bg-slate-800/40 rounded-lg border border-slate-100 dark:border-slate-800">
+                  <div key={i} className="text-xs p-2 bg-slate-50 rounded-lg border border-slate-100">
                     <div className="flex justify-between text-slate-400 text-[10px]">
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">{log.changed_by_name}</span>
+                      <span className="font-semibold text-slate-700">{log.changed_by_name}</span>
                       <span>{new Date(log.created_at).toLocaleDateString()}</span>
                     </div>
-                    <div className="text-slate-600 dark:text-slate-300 mt-1">
+                    <div className="text-slate-600 mt-1">
                       {log.from_status ? `${log.from_status} → ` : ''}
-                      <span className="font-semibold text-brand-600 dark:text-brand-400">{log.to_status}</span>
+                      <span className="font-semibold text-brand-600">{log.to_status}</span>
                       {log.note && <span className="block text-[11px] text-slate-500 italic mt-0.5">{log.note}</span>}
                     </div>
                   </div>

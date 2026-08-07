@@ -16,12 +16,15 @@ def match_policy(ticket, policy_id=None):
             return None
 
     candidates = []
+    ticket_level = (ticket.escalation_level or 0) + 1
     for policy in EscalationPolicy.objects.filter(is_enabled=True):
         if policy.department and policy.department != ticket.department:
             continue
         if policy.category_id and policy.category_id != ticket.category_id:
             continue
         if policy.priority and policy.priority != ticket.priority:
+            continue
+        if policy.from_level and policy.from_level != ticket_level:
             continue
         score = 0
         if policy.department:
@@ -30,6 +33,8 @@ def match_policy(ticket, policy_id=None):
             score += 3
         if policy.priority:
             score += 2
+        if policy.from_level:
+            score += 1
         candidates.append((score, policy))
 
     if not candidates:

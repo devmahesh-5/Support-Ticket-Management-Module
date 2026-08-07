@@ -68,14 +68,14 @@ export default function CommandPalette({ isOpen, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-slate-900/60 backdrop-blur-sm transition-opacity">
       <div 
-        className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transform transition-all"
+        className="w-full max-w-xl bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden transform transition-all"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative flex items-center px-4 border-b border-slate-200 dark:border-slate-800">
+        <div className="relative flex items-center px-4 border-b border-slate-200">
           <Search className="w-5 h-5 text-slate-400 me-3 shrink-0" />
           <input
             type="text"
-            className="w-full py-4 bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none text-base"
+            className="w-full py-4 bg-transparent text-slate-800 placeholder-slate-400 focus:outline-none text-base"
             placeholder="Type a command or search tickets..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -83,7 +83,7 @@ export default function CommandPalette({ isOpen, onClose }) {
           />
           <button 
             onClick={onClose}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100"
           >
             <X className="w-5 h-5" />
           </button>
@@ -102,10 +102,10 @@ export default function CommandPalette({ isOpen, onClose }) {
                   <button
                     key={p.path}
                     onClick={() => navigateTo(p.path)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-slate-100 transition-colors text-left"
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                      <Icon className="w-4 h-4 text-slate-500" />
                       <span>{p.name}</span>
                     </div>
                     <ArrowRight className="w-4 h-4 text-slate-400" />
@@ -130,17 +130,17 @@ export default function CommandPalette({ isOpen, onClose }) {
                   <button
                     key={t.id}
                     onClick={() => navigateTo(`/tickets/${t.id}`)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-100 transition-colors text-left"
                   >
                     <div className="truncate me-2">
-                      <span className="font-mono text-xs font-medium text-brand-600 dark:text-brand-400 me-2">
+                      <span className="font-mono text-xs font-medium text-brand-600 me-2">
                         {t.ticket_id}
                       </span>
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                      <span className="text-sm font-medium text-slate-800 truncate">
                         {t.title}
                       </span>
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 uppercase">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 uppercase">
                       {t.status?.replace('_', ' ')}
                     </span>
                   </button>
@@ -150,9 +150,9 @@ export default function CommandPalette({ isOpen, onClose }) {
           )}
         </div>
 
-        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
+        <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-400">
           <span>Navigate with arrows or click</span>
-          <span className="font-mono bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">ESC to close</span>
+          <span className="font-mono bg-slate-200 px-1.5 py-0.5 rounded text-slate-600">ESC to close</span>
         </div>
       </div>
     </div>

@@ -139,7 +139,7 @@ export default function AdminPage() {
 
   if (user?.role !== 'CAMPUS_ADMIN' && user?.role !== 'DEPT_ADMIN') {
     return (
-      <div className="p-8 bg-rose-50 dark:bg-rose-950/40 rounded-2xl border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-center font-medium text-sm">
+      <div className="p-8 bg-rose-50 rounded-2xl border border-rose-200 text-rose-700 text-center font-medium text-sm">
         Access Denied. Campus Administrator or HOD clearance required.
       </div>
     );
@@ -156,9 +156,9 @@ export default function AdminPage() {
   return (
     <div className="space-y-6">
       {/* Admin Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-brand-600" />
             Enterprise Administration & Policy Settings
           </h1>
@@ -167,7 +167,7 @@ export default function AdminPage() {
       </div>
 
       {/* Tabs Bar */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto pb-px">
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-px">
         {tabs.map((t) => {
           const Icon = t.icon;
           const isActive = tab === t.key;
@@ -177,8 +177,8 @@ export default function AdminPage() {
               onClick={() => setTab(t.key)}
               className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors border-b-2 whitespace-nowrap ${
                 isActive
-                  ? 'border-brand-600 text-brand-600 dark:text-brand-400 bg-slate-50 dark:bg-slate-800/60'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ? 'border-brand-600 text-brand-600 bg-slate-50'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -194,40 +194,40 @@ export default function AdminPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="custom-card p-5">
               <span className="text-xs font-semibold text-slate-500 uppercase">Total Tickets</span>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{stats.total}</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{stats.total}</div>
             </div>
             <div className="custom-card p-5">
               <span className="text-xs font-semibold text-slate-500 uppercase">Closed / Resolved</span>
-              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{stats.by_status?.CLOSED || 0}</div>
+              <div className="text-2xl font-bold text-emerald-600 mt-1">{stats.by_status?.CLOSED || 0}</div>
             </div>
             <div className="custom-card p-5">
               <span className="text-xs font-semibold text-slate-500 uppercase">Overdue Tickets</span>
-              <div className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">{stats.overdue || 0}</div>
+              <div className="text-2xl font-bold text-rose-600 mt-1">{stats.overdue || 0}</div>
             </div>
             <div className="custom-card p-5">
               <span className="text-xs font-semibold text-slate-500 uppercase">Avg Resolution Time</span>
-              <div className="text-2xl font-bold text-brand-600 dark:text-brand-400 mt-1">
+              <div className="text-2xl font-bold text-brand-600 mt-1">
                 {stats.avg_resolution_hours ? `${stats.avg_resolution_hours}h` : 'N/A'}
               </div>
             </div>
           </div>
 
           <div className="custom-card p-5">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Tickets by Category Breakdown</h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-4">Tickets by Category Breakdown</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-semibold">
                   <tr>
                     <th className="p-3">Category</th>
                     <th className="p-3">Count</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100">
                   {Object.entries(stats.by_category || {}).map(([k, v]) => (
                     <tr key={k}>
-                      <td className="p-3 font-medium text-slate-800 dark:text-slate-200">{k}</td>
+                      <td className="p-3 font-medium text-slate-800">{k}</td>
                       <td className="p-3">
-                        <span className="px-2.5 py-1 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold">
+                        <span className="px-2.5 py-1 rounded-full bg-brand-100 text-brand-700 font-bold">
                           {v}
                         </span>
                       </td>
@@ -245,17 +245,17 @@ export default function AdminPage() {
         <div className="space-y-6">
           <div className="custom-card p-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3 text-xs">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">Date Range:</span>
+              <span className="font-semibold text-slate-700">Date Range:</span>
               <input
                 type="date"
-                className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
               />
               <span className="text-slate-400">to</span>
               <input
                 type="date"
-                className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
               />
@@ -286,8 +286,8 @@ export default function AdminPage() {
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Weekly Ticket Submission Trend</h3>
                 <div className="space-y-2 text-xs">
                   {report.weekly_trend?.map((w) => (
-                    <div key={w.week} className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                      <span className="text-slate-600 dark:text-slate-300">{w.week}</span>
+                    <div key={w.week} className="flex justify-between py-1.5 border-b border-slate-100">
+                      <span className="text-slate-600">{w.week}</span>
                       <span className="font-bold text-brand-600">{w.tickets} tickets</span>
                     </div>
                   ))}
@@ -298,7 +298,7 @@ export default function AdminPage() {
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Staff Performance Leaderboard</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                    <thead className="bg-slate-50 text-slate-500 uppercase font-semibold">
                       <tr>
                         <th className="p-2">Staff</th>
                         <th className="p-2">Dept</th>
@@ -307,12 +307,12 @@ export default function AdminPage() {
                         <th className="p-2">Avg Resp</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y divide-slate-100">
                       {report.staff_metrics?.map((s, i) => (
                         <tr key={i}>
-                          <td className="p-2 font-medium text-slate-900 dark:text-slate-100">{s.name}</td>
+                          <td className="p-2 font-medium text-slate-900">{s.name}</td>
                           <td className="p-2 text-slate-500">{s.department || '-'}</td>
-                          <td className="p-2 font-bold text-slate-800 dark:text-slate-200">{s.tickets_handled}</td>
+                          <td className="p-2 font-bold text-slate-800">{s.tickets_handled}</td>
                           <td className="p-2 text-amber-600">{s.open_tickets}</td>
                           <td className="p-2 text-slate-400">{s.avg_response_hours != null ? `${s.avg_response_hours}h` : '-'}</td>
                         </tr>
@@ -330,7 +330,7 @@ export default function AdminPage() {
       {tab === 'users' && user?.role === 'CAMPUS_ADMIN' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="custom-card p-5">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
               <Plus className="w-4 h-4 text-brand-600" /> Add New User
             </h3>
             <form onSubmit={createUser} className="space-y-3 text-xs">
@@ -338,14 +338,14 @@ export default function AdminPage() {
                 type="text"
                 placeholder="Username *"
                 required
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                 value={newUser.username}
                 onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
               />
               <input
                 type="email"
                 placeholder="Email"
-                className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                 value={newUser.email}
                 onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
               />
@@ -353,21 +353,21 @@ export default function AdminPage() {
                 <input
                   type="text"
                   placeholder="First Name"
-                  className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   value={newUser.first_name}
                   onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
                 />
                 <input
                   type="text"
                   placeholder="Last Name"
-                  className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   value={newUser.last_name}
                   onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <select
-                  className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   value={newUser.role}
                   onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 >
@@ -379,7 +379,7 @@ export default function AdminPage() {
                 </select>
                 {STAFF_ROLES.includes(newUser.role) && (
                   <select
-                    className="p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                    className="p-2 bg-slate-50 border border-slate-200 rounded-lg"
                     value={newUser.staff_type}
                     onChange={(e) => setNewUser({ ...newUser, staff_type: e.target.value })}
                   >
@@ -392,7 +392,7 @@ export default function AdminPage() {
               </div>
               {STAFF_ROLES.includes(newUser.role) && (
                 <select
-                  className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg"
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   value={newUser.level}
                   onChange={(e) => setNewUser({ ...newUser, level: parseInt(e.target.value) })}
                 >
@@ -406,10 +406,10 @@ export default function AdminPage() {
           </div>
 
           <div className="lg:col-span-2 custom-card p-5">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4">Campus User Roster & Level Hierarchy</h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-4">Campus User Roster & Level Hierarchy</h3>
             <div className="overflow-x-auto max-h-96">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-semibold">
                   <tr>
                     <th className="p-3">Username</th>
                     <th className="p-3">Full Name</th>
@@ -417,17 +417,17 @@ export default function AdminPage() {
                     <th className="p-3">Escalation Level</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                <tbody className="divide-y divide-slate-100">
                   {users.map((u) => (
                     <tr key={u.id}>
                       <td className="p-3 font-mono font-medium text-brand-600">{u.username}</td>
-                      <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{u.full_name || '-'}</td>
+                      <td className="p-3 font-medium text-slate-900">{u.full_name || '-'}</td>
                       <td className="p-3">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                           {u.role}
                         </span>
                         {STAFF_ROLES.includes(u.role) && u.staff_type && (
-                          <span className="ms-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-300">
+                          <span className="ms-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-50 text-brand-700">
                             {u.staff_type}
                           </span>
                         )}
@@ -435,7 +435,7 @@ export default function AdminPage() {
                       <td className="p-3">
                         {STAFF_ROLES.includes(u.role) ? (
                           <select
-                            className="px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                            className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs"
                             value={u.level || 1}
                             onChange={(e) => updateUserLevel(u.id, parseInt(e.target.value))}
                           >
@@ -460,13 +460,13 @@ export default function AdminPage() {
       {tab === 'categories' && (
         <div className="custom-card p-5 space-y-4">
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Category Configuration & Estimated Target Times</h3>
+            <h3 className="text-sm font-bold text-slate-900">Category Configuration & Estimated Target Times</h3>
             <p className="text-xs text-slate-500">Edit estimated target response & resolution hours per category</p>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 uppercase font-semibold">
+              <thead className="bg-slate-50 text-slate-500 uppercase font-semibold">
                 <tr>
                   <th className="p-3">Category Name</th>
                   <th className="p-3">Estimated Target Response (hrs)</th>
@@ -474,18 +474,18 @@ export default function AdminPage() {
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-slate-100">
                 {categories.map((c) => {
                   const itemState = editedCategories[c.id] || { sla_response_hours: c.sla_response_hours, sla_resolution_hours: c.sla_resolution_hours };
                   return (
                     <tr key={c.id}>
-                      <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{c.name}</td>
+                      <td className="p-3 font-medium text-slate-900">{c.name}</td>
                       <td className="p-3">
                         <input
                           type="number"
                           min={1}
                           max={720}
-                          className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                          className="w-24 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs"
                           value={itemState.sla_response_hours}
                           onChange={(e) => setEditedCategories((prev) => ({
                             ...prev,
@@ -499,7 +499,7 @@ export default function AdminPage() {
                           type="number"
                           min={1}
                           max={720}
-                          className="w-24 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-xs"
+                          className="w-24 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs"
                           value={itemState.sla_resolution_hours}
                           onChange={(e) => setEditedCategories((prev) => ({
                             ...prev,
@@ -535,16 +535,16 @@ export default function AdminPage() {
       {tab === 'settings' && (
         <div className="custom-card p-6 space-y-4 max-w-2xl">
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Settings className="w-4 h-4 text-brand-600" />
               Escalation Policy & Direction Control
             </h3>
             <p className="text-xs text-slate-500 mt-1">Configure whether tickets can be de-escalated back to lower management levels</p>
           </div>
 
-          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-900 dark:text-white block">
+              <span className="text-xs font-bold text-slate-900 block">
                 Allow 2-Way Escalation & De-escalation
               </span>
               <span className="text-xs text-slate-500 block mt-0.5">
@@ -559,7 +559,7 @@ export default function AdminPage() {
                 checked={allowTwoWay}
                 onChange={handleToggleTwoWay}
               />
-              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
             </label>
           </div>
         </div>

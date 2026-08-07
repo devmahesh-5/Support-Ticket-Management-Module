@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Headphones, ShieldCheck, Lock, User, LogIn, Sparkles } from 'lucide-react';
+import { ShieldCheck, Lock, User, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
@@ -35,11 +35,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10 space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl bg-brand-600 flex items-center justify-center text-white mx-auto shadow-lg shadow-brand-500/30">
-            <Headphones className="w-7 h-7" />
+          <div className="w-14 h-14 rounded-2xl mx-auto overflow-hidden shadow-lg shadow-brand-500/30 border border-brand-800/50">
+            <img src="/logo.png" alt="IOE Pulchowk Campus" className="w-full h-full object-contain bg-brand-600" />
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-950 text-brand-300 text-xs font-medium border border-brand-800/50">
-            <Sparkles className="w-3.5 h-3.5" />
+
             <span>IOE Pulchowk Campus</span>
           </div>
           <h2 className="text-2xl font-extrabold text-white tracking-tight">
@@ -107,7 +107,7 @@ export default function LoginPage() {
 
         <div className="pt-4 border-t border-slate-800/80 text-center text-[11px] text-slate-500 space-y-1">
           <p>Pulchowk Engineering Campus Service Portal</p>
-          <p className="text-slate-400">Department of Computer & Electronics Engineering</p>
+
         </div>
       </div>
     </div>

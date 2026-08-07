@@ -14,33 +14,33 @@ export default function KpiCard({
 }) {
   const colorMap = {
     brand: {
-      bg: 'bg-brand-50 dark:bg-brand-950/40',
-      text: 'text-brand-600 dark:text-brand-400',
-      border: 'hover:border-brand-300 dark:hover:border-brand-700',
+      bg: 'bg-brand-50',
+      text: 'text-brand-600',
+      border: 'hover:border-brand-300',
       sparkline: '#0070c7'
     },
     emerald: {
-      bg: 'bg-emerald-50 dark:bg-emerald-950/40',
-      text: 'text-emerald-600 dark:text-emerald-400',
-      border: 'hover:border-emerald-300 dark:hover:border-emerald-700',
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-600',
+      border: 'hover:border-emerald-300',
       sparkline: '#10b981'
     },
     amber: {
-      bg: 'bg-amber-50 dark:bg-amber-950/40',
-      text: 'text-amber-600 dark:text-amber-400',
-      border: 'hover:border-amber-300 dark:hover:border-amber-700',
+      bg: 'bg-amber-50',
+      text: 'text-amber-600',
+      border: 'hover:border-amber-300',
       sparkline: '#f59e0b'
     },
     rose: {
-      bg: 'bg-rose-50 dark:bg-rose-950/40',
-      text: 'text-rose-600 dark:text-rose-400',
-      border: 'hover:border-rose-300 dark:hover:border-rose-700',
+      bg: 'bg-rose-50',
+      text: 'text-rose-600',
+      border: 'hover:border-rose-300',
       sparkline: '#ef4444'
     },
     purple: {
-      bg: 'bg-purple-50 dark:bg-purple-950/40',
-      text: 'text-purple-600 dark:text-purple-400',
-      border: 'hover:border-purple-300 dark:hover:border-purple-700',
+      bg: 'bg-purple-50',
+      text: 'text-purple-600',
+      border: 'hover:border-purple-300',
       sparkline: '#8b5cf6'
     }
   };
@@ -62,14 +62,14 @@ export default function KpiCard({
   return (
     <div 
       onClick={onClick}
-      className={`group relative p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md cursor-pointer overflow-hidden ${scheme.border}`}
+      className={`group relative p-5 bg-white border border-slate-200/80 rounded-2xl shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md cursor-pointer overflow-hidden ${scheme.border}`}
     >
       <div className="flex items-start justify-between">
         <div>
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
             {title}
           </span>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1 tracking-tight">
+          <div className="text-2xl font-bold text-slate-900 mt-1 tracking-tight">
             {value}
           </div>
         </div>
@@ -82,13 +82,13 @@ export default function KpiCard({
         {/* Trend Info */}
         <div className="flex items-center gap-1.5 text-xs">
           {trend === 'up' && (
-            <span className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 font-medium">
+            <span className="flex items-center gap-0.5 text-emerald-600 font-medium">
               <TrendingUp className="w-3.5 h-3.5" />
               {trendValue}
             </span>
           )}
           {trend === 'down' && (
-            <span className="flex items-center gap-0.5 text-rose-600 dark:text-rose-400 font-medium">
+            <span className="flex items-center gap-0.5 text-rose-600 font-medium">
               <TrendingDown className="w-3.5 h-3.5" />
               {trendValue}
             </span>
@@ -99,7 +99,7 @@ export default function KpiCard({
               {trendValue || '0%'}
             </span>
           )}
-          <span className="text-slate-400 dark:text-slate-500 text-[11px] truncate max-w-[100px]">{subtitle}</span>
+          <span className="text-slate-400 text-[11px] truncate max-w-[100px]">{subtitle}</span>
         </div>
 
         {/* Mini SVG Sparkline */}

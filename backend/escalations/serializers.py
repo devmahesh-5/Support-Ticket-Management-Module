@@ -82,6 +82,32 @@ class EscalationPolicySerializer(serializers.ModelSerializer):
     def get_rules(self, obj):
         return EscalationRuleSerializer(obj.rules.all(), many=True).data
 
+    def validate(self, attrs):
+        instance = self.instance
+        from_level = attrs.get("from_level", getattr(instance, "from_level", None))
+        to_level = attrs.get("to_level", getattr(instance, "to_level", None))
+
+        if from_level is not None and to_level is not None and from_level > to_level:
+            raise serializers.ValidationError(
+                "From level cannot be higher than the To level."
+            )
+
+        queryset = EscalationPolicy.objects.all()
+        if instance:
+            queryset = queryset.exclude(pk=instance.pk)
+
+        if from_level is not None and queryset.filter(from_level=from_level).exists():
+            raise serializers.ValidationError(
+                f"A policy already escalates from Level {from_level}."
+            )
+
+        if queryset.count() >= 2:
+            raise serializers.ValidationError(
+                "Only 2 escalation policies are allowed (one per level transition)."
+            )
+
+        return attrs
+
 
 class EscalationRuleSerializer(serializers.ModelSerializer):
     class Meta:

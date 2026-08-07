@@ -57,8 +57,8 @@ const DEFAULT_MAPPING = { LOW: "MEDIUM", MEDIUM: "HIGH", HIGH: "CRITICAL", CRITI
 
 function Section({ title, children }) {
   return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-4 space-y-3">
-      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{title}</h4>
+    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</h4>
       {children}
     </div>
   );
@@ -67,7 +67,7 @@ function Section({ title, children }) {
 function ToggleRow({ label, field, form }) {
   return (
     <div className="flex items-center justify-between gap-4 py-1">
-      <span className="text-sm text-slate-700 dark:text-slate-300">{label}</span>
+      <span className="text-sm text-slate-700">{label}</span>
       <FormField name={field} children={({ field: f }) => (
         <Switch checked={!!f.value} onCheckedChange={f.onChange} />
       )} />
@@ -162,30 +162,30 @@ function RulesEditor({ policy, reload }) {
   };
 
   const actionRow = (a, i) => (
-    <div key={i} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 dark:border-slate-800 p-2">
-      <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={a.action} onChange={(e) => updateAction(i, "action", e.target.value)}>
+    <div key={i} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
+      <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={a.action} onChange={(e) => updateAction(i, "action", e.target.value)}>
         {RULE_ACTIONS.map((ra) => <option key={ra.value} value={ra.value}>{ra.label}</option>)}
       </select>
       {a.action === "increase_priority" && (
-        <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={a.value || "HIGH"} onChange={(e) => updateAction(i, "value", e.target.value)}>
+        <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={a.value || "HIGH"} onChange={(e) => updateAction(i, "value", e.target.value)}>
           {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
       )}
       {a.action === "notify" && (
         <>
-          <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={a.target || "assigned"} onChange={(e) => updateAction(i, "target", e.target.value)}>
+          <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={a.target || "assigned"} onChange={(e) => updateAction(i, "target", e.target.value)}>
             <option value="assigned">Assigned Staff</option>
             <option value="manager">Manager / HOD</option>
             <option value="creator">Creator</option>
           </select>
-          <input className="h-8 flex-1 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" placeholder="Message" value={a.message || ""} onChange={(e) => updateAction(i, "message", e.target.value)} />
+          <input className="h-8 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-xs" placeholder="Message" value={a.message || ""} onChange={(e) => updateAction(i, "message", e.target.value)} />
         </>
       )}
       {a.action === "assign_user" && (
-        <input type="number" className="h-8 w-24 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" placeholder="User ID" value={a.user_id || ""} onChange={(e) => updateAction(i, "user_id", e.target.value)} />
+        <input type="number" className="h-8 w-24 rounded-md border border-slate-300 bg-transparent px-2 text-xs" placeholder="User ID" value={a.user_id || ""} onChange={(e) => updateAction(i, "user_id", e.target.value)} />
       )}
       {a.action === "assign_level" && (
-        <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={a.level_id || ""} onChange={(e) => updateAction(i, "level_id", e.target.value)}>
+        <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={a.level_id || ""} onChange={(e) => updateAction(i, "level_id", e.target.value)}>
           <option value="">Level...</option>
           {SUPPORT_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
@@ -199,9 +199,9 @@ function RulesEditor({ policy, reload }) {
       {rules.length > 0 && (
         <div className="space-y-2">
           {rules.map((r, i) => (
-            <div key={r.id} className="flex items-center justify-between gap-2 rounded border border-slate-200 dark:border-slate-800 p-2">
+            <div key={r.id} className="flex items-center justify-between gap-2 rounded border border-slate-200 p-2">
               <div className="text-xs">
-                <span className="font-semibold text-slate-800 dark:text-slate-200">{r.name}</span>
+                <span className="font-semibold text-slate-800">{r.name}</span>
                 <span className="ml-2 text-slate-400">IF {JSON.stringify(r.conditions)} THEN {JSON.stringify(r.actions)}</span>
               </div>
               <div className="flex gap-1">
@@ -214,24 +214,24 @@ function RulesEditor({ policy, reload }) {
       )}
 
       {draft ? (
-        <div className="space-y-3 rounded border border-brand-200 dark:border-brand-800 bg-brand-50/40 dark:bg-brand-950/20 p-3">
+        <div className="space-y-3 rounded border border-brand-200 bg-brand-50/40 p-3">
           <div className="flex items-center gap-2">
-            <input className="h-8 flex-1 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" placeholder="Rule name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            <input className="h-8 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-xs" placeholder="Rule name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" checked={draft.is_active} onChange={(e) => setDraft({ ...draft, is_active: e.target.checked })} /> Active</label>
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">When (all must match)</p>
+            <p className="mb-1 text-xs font-semibold text-slate-600">When (all must match)</p>
             <div className="space-y-2">
               {draft.conditions.map((c, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={c.field} onChange={(e) => updateCondition(i, "field", e.target.value)}>
+                  <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={c.field} onChange={(e) => updateCondition(i, "field", e.target.value)}>
                     {RULE_FIELDS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                   </select>
-                  <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={c.op} onChange={(e) => updateCondition(i, "op", e.target.value)}>
+                  <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={c.op} onChange={(e) => updateCondition(i, "op", e.target.value)}>
                     {RULE_OPS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
-                  <input className="h-8 w-32 flex-1 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" placeholder="Value" value={c.value ?? ""} onChange={(e) => updateCondition(i, "value", e.target.value)} />
+                  <input className="h-8 w-32 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-xs" placeholder="Value" value={c.value ?? ""} onChange={(e) => updateCondition(i, "value", e.target.value)} />
                   <button type="button" onClick={() => removeCondition(i)} className="text-rose-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
               ))}
@@ -240,7 +240,7 @@ function RulesEditor({ policy, reload }) {
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Then (run in order)</p>
+            <p className="mb-1 text-xs font-semibold text-slate-600">Then (run in order)</p>
             <div className="space-y-2">
               {draft.actions.map(actionRow)}
               <Button type="button" variant="outline" size="sm" onClick={addAction}><Plus className="h-3.5 w-3.5" /> Add Action</Button>
@@ -344,7 +344,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
         </Section>
 
         <Section title="SLA">
-          <p className="text-xs text-slate-600 dark:text-slate-300">
+          <p className="text-xs text-slate-600">
             SLA deadlines are taken from the ticket's <strong>category</strong> (response and resolution hours set on the category),
             counted as plain elapsed time from ticket creation. This policy does not define SLA hours - it only defines when and
             where to escalate on breach.
@@ -354,7 +354,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
         <Section title="Notifications">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div className="space-y-1">
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Notify Assigned Staff at</p>
+              <p className="text-xs font-semibold text-slate-600">Notify Assigned Staff at</p>
               <ToggleRow label="50%" field="notify_assigned_50" form={form} />
               <ToggleRow label="75%" field="notify_assigned_75" form={form} />
               <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
               </div>
             </div>
             <div className="space-y-1">
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Notify Manager / HOD at</p>
+              <p className="text-xs font-semibold text-slate-600">Notify Manager / HOD at</p>
               <ToggleRow label="50%" field="notify_manager_50" form={form} />
               <ToggleRow label="75%" field="notify_manager_75" form={form} />
               <ToggleRow label="90%" field="notify_manager_90" form={form} />
@@ -393,7 +393,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ToggleRow label="Enable auto escalation" field="auto_escalate" form={form} />
             <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-700 dark:text-slate-300 whitespace-nowrap">Escalation delay</span>
+              <span className="text-sm text-slate-700 whitespace-nowrap">Escalation delay</span>
               <FormField name="escalation_delay_minutes" children={({ field }) => {
                 const current = Number(field.value || 0);
                 const isPreset = !delayCustom;
@@ -414,7 +414,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
               }} />
             </div>
           </div>
-          <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
+          <p className="text-xs text-slate-600 mt-2">
             On SLA breach after the delay: if ON, the ticket is auto-assigned to staff at the <strong>To level</strong>.
             If OFF, the ticket is pushed to the <strong>escalation queue</strong> where the HOD/admin sees it and assigns it manually.
           </p>
@@ -425,9 +425,9 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
           {form.watch("increase_priority_on_breach") && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
               {PRIORITIES.map((p) => (
-                <div key={p.value} className="flex items-center justify-between gap-2 rounded border border-slate-200 dark:border-slate-800 px-2 py-1">
-                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{p.label} breaches to</span>
-                  <select className="h-8 rounded-md border border-slate-300 dark:border-slate-700 bg-transparent px-2 text-xs dark:bg-slate-900" value={mapping[p.value]} onChange={(e) => setMapping((m) => ({ ...m, [p.value]: e.target.value }))}>
+                <div key={p.value} className="flex items-center justify-between gap-2 rounded border border-slate-200 px-2 py-1">
+                  <span className="text-xs font-medium text-slate-700">{p.label} breaches to</span>
+                  <select className="h-8 rounded-md border border-slate-300 bg-transparent px-2 text-xs" value={mapping[p.value]} onChange={(e) => setMapping((m) => ({ ...m, [p.value]: e.target.value }))}>
                     {PRIORITIES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
