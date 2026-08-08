@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, FileText, Send, X, CheckCircle2, HelpCircle } from 'lucide-react';
+import { PlusCircle, FileText, Send, X, CheckCircle2, HelpCircle, Upload } from 'lucide-react';
 import { ticketAPI, categoryAPI, userAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'zip'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export default function CreateTicketPage() {
   const navigate = useNavigate();
@@ -21,6 +24,8 @@ export default function CreateTicketPage() {
     student_names: '',
     assigned_to: '',
   });
+  const [attachments, setAttachments] = useState([]);
+  const [attachmentError, setAttachmentError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -79,12 +84,48 @@ export default function CreateTicketPage() {
         assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
       };
       const res = await ticketAPI.create(payload);
+
+      if (attachments.length) {
+        const fd = new FormData();
+        attachments.forEach((file) => fd.append('file', file));
+        try {
+          await ticketAPI.uploadAttachment(res.data.id, fd);
+        } catch (uploadErr) {
+          alert('Ticket created, but one or more attachments could not be uploaded. You can add them on the ticket page.');
+        }
+      }
+
       navigate(`/tickets/${res.data.id}`);
     } catch (err) {
       setErrorMsg(err.response?.data?.error || 'Failed to submit ticket request. Please verify inputs.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleAttachmentSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    const errors = [];
+    const valid = [];
+    files.forEach((file) => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        errors.push(`"${file.name}" has an unsupported file type.`);
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        errors.push(`"${file.name}" exceeds the 10 MB limit.`);
+        return;
+      }
+      valid.push(file);
+    });
+    setAttachmentError(errors.join(' '));
+    setAttachments((prev) => [...prev, ...valid]);
+    e.target.value = '';
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -250,6 +291,49 @@ export default function CreateTicketPage() {
               placeholder="Provide exact details regarding your ticket issue, lab room number, or specific error message..."
               className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
+          </div>
+
+          {/* Attachments */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Attachments (optional)
+            </label>
+            <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 bg-slate-50 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-brand-400 hover:bg-brand-50/40 transition-colors">
+              <Upload className="w-6 h-6 text-slate-400" />
+              <span className="text-xs text-slate-500">Click to select files (max 10 MB each)</span>
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleAttachmentSelect}
+              />
+            </label>
+
+            {attachmentError && (
+              <p className="text-[11px] text-rose-600 mt-1.5">{attachmentError}</p>
+            )}
+
+            {attachments.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {attachments.map((file, i) => (
+                  <li key={`${file.name}-${i}`} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-brand-600 shrink-0" />
+                      <span className="text-xs text-slate-700 truncate">{file.name}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{(file.size / 1024).toFixed(1)} KB</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                      title="Remove file"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* CR Class-Level Option */}

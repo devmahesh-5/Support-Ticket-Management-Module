@@ -5,6 +5,15 @@ from accounts.models import User
 from .routing import get_category_route
 
 
+ALLOWED_ATTACHMENT_EXTENSIONS = {
+    "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "txt", "csv", "md", "zip",
+}
+
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
 class SystemSettingSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemSetting
@@ -63,9 +72,52 @@ class StatusLogSerializer(serializers.ModelSerializer):
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Attachment
-        fields = "__all__"
+        fields = [
+            "id", "ticket", "file", "filename", "file_url", "file_size",
+            "uploaded_by", "uploaded_by_name", "uploaded_at",
+        ]
+        read_only_fields = ["id", "filename", "uploaded_by", "uploaded_at"]
+
+    def get_file_url(self, obj):
+        request = self.context.get("request")
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_file_size(self, obj):
+        try:
+            return obj.file.size
+        except Exception:
+            return None
+
+    def get_uploaded_by_name(self, obj):
+        if obj.uploaded_by:
+            return obj.uploaded_by.get_full_name() or obj.uploaded_by.username
+        return None
+
+    def validate_file(self, value):
+        ext = value.name.rsplit(".", 1)[-1].lower() if "." in value.name else ""
+        if ext not in ALLOWED_ATTACHMENT_EXTENSIONS:
+            raise serializers.ValidationError(
+                "File type not allowed. Allowed types: "
+                + ", ".join(sorted(ALLOWED_ATTACHMENT_EXTENSIONS))
+            )
+        if value.size > MAX_ATTACHMENT_SIZE:
+            raise serializers.ValidationError(
+                "File size exceeds the "
+                f"{MAX_ATTACHMENT_SIZE // (1024 * 1024)} MB limit."
+            )
+        return value
+
+    def create(self, validated_data):
+        validated_data["uploaded_by"] = self.context["request"].user
+        validated_data["filename"] = validated_data["file"].name
+        return super().create(validated_data)
 
 
 class TicketListSerializer(serializers.ModelSerializer):
