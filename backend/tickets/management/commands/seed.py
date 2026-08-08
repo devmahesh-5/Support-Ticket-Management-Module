@@ -1,6 +1,11 @@
 from django.core.management.base import BaseCommand
 from accounts.models import User
-from tickets.models import Category, RoutingRule
+from tickets.categories import CATEGORY_NAMES
+import secrets
+
+
+def random_password():
+    return secrets.token_urlsafe(12)
 
 
 class Command(BaseCommand):
@@ -10,26 +15,15 @@ class Command(BaseCommand):
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
+        credentials = []
+
         if not User.objects.filter(username='admin').exists():
-            User.objects.create_superuser('admin', 'admin@pulchowk.edu', 'pass@123')
+            admin_pw = random_password()
+            User.objects.create_superuser('admin', 'admin@pulchowk.edu', admin_pw)
+            credentials.append(("admin", admin_pw))
         admin = User.objects.get(username='admin')
         admin.role = User.Role.CAMPUS_ADMIN
         admin.save()
-
-        categories = {
-            'Lab Equipment': 'Lab hardware, equipment, projector issues',
-            'Classroom': 'Classroom, teaching aid, whiteboard issues',
-            'Network / Internet': 'Campus internet, WiFi, network issues',
-            'Academic': 'Grades, registration, transcripts, exams',
-            'Financial / Fees': 'Payments, scholarships, refunds, fees',
-            'Library': 'Library services, book issues',
-            'Hostel / Facilities': 'Hostel, accommodation, maintenance',
-            'General / Other': 'Other issues',
-        }
-        cat_objs = {}
-        for name, desc in categories.items():
-            c, _ = Category.objects.get_or_create(name=name, defaults={'description': desc})
-            cat_objs[name] = c
 
         users = [
             ('080bct045', 'Mahesh', 'Bhandari', User.Role.STUDENT, 'COM', 'BCT', None),
@@ -63,36 +57,19 @@ class Command(BaseCommand):
             u.department = dept
             u.staff_type = staff_type
             u.section = section or None
-            if role in (User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN) and not u.level:
-                u.level = 1
-            u.set_password('pass@123')
+            if role == User.Role.STAFF:
+                u.level = 1 if u.level not in (1, 2) else u.level
+            elif role == User.Role.DEPT_ADMIN:
+                u.level = 3
+            password = random_password()
+            u.set_password(password)
             u.save()
-
-        rules = [
-            (cat_objs['Lab Equipment'],       'SELF', 1),
-            (cat_objs['Classroom'],           'SELF', 2),
-            (cat_objs['Network / Internet'],  'CIT',  3),
-            (cat_objs['Financial / Fees'],    'FIN',  4),
-            (cat_objs['Academic'],            'ACA',  5),
-            (cat_objs['Library'],             'LIB',  6),
-            (cat_objs['Hostel / Facilities'], 'FAC',  7),
-            (cat_objs['General / Other'],     'HOD',  8),
-        ]
-        for category, target_dept, priority in rules:
-            rule, _ = RoutingRule.objects.get_or_create(
-                category=category,
-                defaults={
-                    'target_department': target_dept,
-                    'priority': priority,
-                    'is_active': True,
-                }
-            )
-            rule.target_department = target_dept
-            rule.priority = priority
-            rule.is_active = True
-            rule.save()
+            credentials.append((uname, password))
 
         self.stdout.write(self.style.SUCCESS("Seed complete!"))
         self.stdout.write(f"Users: {User.objects.count()}")
-        self.stdout.write(f"Categories: {Category.objects.count()}")
-        self.stdout.write(f"Routing rules: {RoutingRule.objects.count()}")
+        self.stdout.write(f"Hardcoded categories: {len(CATEGORY_NAMES)}")
+        self.stdout.write("")
+        self.stdout.write(self.style.WARNING("Generated credentials (save these):"))
+        for username, password in credentials:
+            self.stdout.write(f"  {username}: {password}")

@@ -23,6 +23,25 @@ MAX_LEVEL = 3
 CAMPUS_ADMIN_LEVEL = 4  # sentinel staff level: the campus admin (Admin Review)
 
 
+def escalation_level_for_assignee(assignee):
+    """Map an assigned user onto the ticket escalation_level chain.
+
+    escalation_level is the chain position (0 = L1 staff, 1 = L2 staff,
+    2 = department HOD, 3 = campus admin). Explicitly-assigned tickets keep
+    the chain position of their assignee so later escalation hops correctly
+    from L2 -> HOD -> admin instead of re-starting at L1.
+    """
+    if not assignee:
+        return 0
+    if assignee.role == User.Role.CAMPUS_ADMIN:
+        return MAX_LEVEL
+    if assignee.role == User.Role.DEPT_ADMIN:
+        return 2
+    if assignee.role == User.Role.STAFF:
+        return max(int(assignee.level or 1) - 1, 0)
+    return 0
+
+
 def status_for_level(level):
     """Map a staff escalation level onto existing ticket statuses."""
     if level <= 0:
@@ -107,7 +126,7 @@ def resolve_assignee(level=None, queue=None, department=None, user=None, ticket=
 def _category_route(ticket):
     """The routing target for the ticket's category (same rule as routing)."""
     from tickets.routing import get_category_route
-    if not ticket or not ticket.category_id:
+    if not ticket or not ticket.category:
         return None
     return get_category_route(ticket.category)
 
@@ -265,7 +284,7 @@ def _deescalation_target(ticket, policy=None):
     for p in policies:
         if p.department and p.department != ticket.department:
             continue
-        if p.category_id and p.category_id != ticket.category_id:
+        if p.category and p.category != ticket.category:
             continue
         if p.priority and p.priority != ticket.priority:
             continue
@@ -360,7 +379,7 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
         notify_user(
             user=assignee,
             title=title,
-            message=f"Ticket {ticket.ticket_id} ('{ticket.title}') - {message}",
+            message=f"Ticket '{ticket.title}' - {message}",
             ticket=ticket,
             notification_type="ESCALATION",
             methods=methods,
@@ -370,7 +389,7 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
         notify_user(
             user=previous_assignee,
             title="Ticket escalated away from you",
-            message=f"Ticket {ticket.ticket_id} ('{ticket.title}') - {message}",
+            message=f"Ticket '{ticket.title}' - {message}",
             ticket=ticket,
             notification_type="ESCALATION",
             methods=methods,
@@ -380,7 +399,7 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
         notify_user(
             user=creator,
             title="Ticket escalated",
-            message=f"Ticket {ticket.ticket_id} ('{ticket.title}') - {message}",
+            message=f"Ticket '{ticket.title}' - {message}",
             ticket=ticket,
             notification_type="ESCALATION",
             methods=methods,
@@ -425,7 +444,7 @@ def add_to_escalation_queue(ticket, policy=None, actor=None, now=None):
         notify_user(
             user=recipient,
             title="Ticket added to escalation queue",
-            message=f"Ticket {ticket.ticket_id} ('{ticket.title}') breached its SLA and needs attention in the escalation queue.",
+            message=f"Ticket '{ticket.title}' breached its SLA and needs attention in the escalation queue.",
             ticket=ticket,
             notification_type="ESCALATION",
             methods=methods,

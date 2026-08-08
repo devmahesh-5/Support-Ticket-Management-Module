@@ -33,6 +33,28 @@ class Notification(models.Model):
         return f"[{self.notification_type}] {self.title} - {self.user}"
 
 
+class NotificationSetting(models.Model):
+    """Per-notification-type channel controls.
+
+    In-App notifications are always on (``in_app`` is forced True and cannot
+    be disabled). Email delivery for each type can be toggled by an admin;
+    the escalation notify dispatcher consults these settings before sending.
+    """
+
+    notification_type = models.CharField(
+        max_length=30, choices=Notification.Type.choices, unique=True
+    )
+    in_app = models.BooleanField(default=True)
+    email = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["notification_type"]
+
+    def __str__(self):
+        return f"{self.notification_type} (in-app: {'on' if self.in_app else 'off'}, email: {'on' if self.email else 'off'})"
+
+
 class NotificationTemplate(models.Model):
     name = models.CharField(max_length=100, unique=True)
     subject = models.CharField(max_length=200)

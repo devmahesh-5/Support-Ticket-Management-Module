@@ -45,7 +45,7 @@ class SupportQueueViewSet(viewsets.ModelViewSet):
 
 
 class EscalationPolicyViewSet(viewsets.ModelViewSet):
-    queryset = EscalationPolicy.objects.select_related("category").prefetch_related("rules")
+    queryset = EscalationPolicy.objects.prefetch_related("rules")
     serializer_class = EscalationPolicySerializer
     permission_classes = [permissions.IsAuthenticated, IsStaffOrAdmin]
     filterset_fields = ["is_enabled", "department", "priority"]
@@ -110,7 +110,7 @@ class EscalationDashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def dashboard(self, request):
         now = timezone.now()
-        qs = self._qs(request).select_related("category", "assigned_to", "created_by")
+        qs = self._qs(request).select_related("assigned_to", "created_by")
 
         approaching = qs.filter(sla_status="APPROACHING", status__in=ACTIVE).order_by("sla_deadline")
         breached = qs.filter(sla_status="BREACHED", status__in=ACTIVE)

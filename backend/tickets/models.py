@@ -4,45 +4,6 @@ from django.utils import timezone
 import uuid
 
 
-class Category(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True, null=True)
-    sla_response_hours = models.IntegerField(default=24, help_text="Target response time in hours")
-    sla_resolution_hours = models.IntegerField(default=72, help_text="Target resolution time in hours")
-
-    class Meta:
-        verbose_name_plural = "Categories"
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-class RoutingRule(models.Model):
-    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="routing_rules")
-    target_department = models.CharField(max_length=20, choices=[
-        ("SELF", "Ticket's Own Department"),
-        ("CIT", "CIT (IT Support)"),
-        ("FIN", "Finance"),
-        ("ACA", "Academic Affairs"),
-        ("LIB", "Library"),
-        ("FAC", "Facilities"),
-        ("HOD", "Respective HOD"),
-        ("CAMPUS_ADMIN", "Campus Admin"),
-    ], default="SELF")
-    keyword_match = models.CharField(max_length=200, blank=True, null=True, help_text="Optional keyword for title/desc matching")
-    priority = models.IntegerField(default=0, help_text="Lower number = higher priority")
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["priority"]
-
-    def __str__(self):
-        return f"{self.category.name} -> {self.target_department}"
-
-
 class Ticket(models.Model):
     class Status(models.TextChoices):
         OPEN = "OPEN", "Open"
@@ -63,7 +24,7 @@ class Ticket(models.Model):
     ticket_id = models.CharField(max_length=20, unique=True, editable=False)
     title = models.CharField(max_length=200)
     description = models.TextField()
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name="tickets")
+    category = models.CharField(max_length=100, blank=True, null=True, help_text="Hardcoded category name (see tickets.categories)")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
 
@@ -155,6 +116,11 @@ class StatusLog(models.Model):
 
 class Attachment(models.Model):
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="attachments")
+    message = models.ForeignKey(
+        TicketMessage, null=True, blank=True,
+        on_delete=models.CASCADE, related_name="attachments",
+        help_text="Reply/thread message this attachment belongs to (blank = attached to the ticket itself)",
+    )
     file = models.FileField(upload_to="tickets/attachments/")
     filename = models.CharField(max_length=255)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
@@ -162,6 +128,25 @@ class Attachment(models.Model):
 
     def __str__(self):
         return self.filename
+
+
+class CategorySla(models.Model):
+    """Admin-configurable SLA target hours per hardcoded category name.
+
+    Categories themselves are fixed constants (tickets.categories); this model
+    only stores the admin-edited response/resolution hour overrides.
+    """
+
+    category = models.CharField(max_length=100, unique=True, help_text="Hardcoded category name (see tickets.categories)")
+    sla_response_hours = models.IntegerField(default=24, help_text="Target response time in hours")
+    sla_resolution_hours = models.IntegerField(default=72, help_text="Target resolution time in hours")
+
+    class Meta:
+        verbose_name = "Category SLA"
+        verbose_name_plural = "Category SLAs"
+
+    def __str__(self):
+        return f"{self.category} ({self.sla_response_hours}h / {self.sla_resolution_hours}h)"
 
 
 class SystemSetting(models.Model):

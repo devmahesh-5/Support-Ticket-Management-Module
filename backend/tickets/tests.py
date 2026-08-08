@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from accounts.models import User
-from .models import Attachment, Category, Ticket
+from .models import Attachment, Ticket
 from .serializers import MAX_ATTACHMENT_SIZE
 
 
@@ -28,7 +28,7 @@ class AttachmentAPITests(TestCase):
         self.campus_admin = User.objects.create_user(
             username="admin1", password="pass", role=User.Role.CAMPUS_ADMIN,
         )
-        self.category = Category.objects.create(name="Network / Internet")
+        self.category = "Network / Internet"
 
         self.ticket = Ticket.objects.create(
             title="Test ticket",

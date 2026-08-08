@@ -64,7 +64,7 @@ class SupportQueueSerializer(serializers.ModelSerializer):
 
 
 class EscalationPolicySerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source="category.name", read_only=True)
+    category_name = serializers.CharField(source="category", read_only=True)
     from_level_name = serializers.SerializerMethodField()
     to_level_name = serializers.SerializerMethodField()
     rules = serializers.SerializerMethodField()

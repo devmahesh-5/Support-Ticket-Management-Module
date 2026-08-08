@@ -17,20 +17,106 @@ import {
   Paperclip,
   Download,
   Trash2,
-  Upload,
   X
 } from 'lucide-react';
 import { ticketAPI, userAPI, systemSettingAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import FilePreview from './common/FilePreview';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'zip'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+
+const isImageName = (name = '') => IMAGE_EXTENSIONS.includes(name.split('.').pop().toLowerCase());
 
 const formatFileSize = (bytes) => {
   if (!bytes && bytes !== 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const ThreadAttachment = ({ att, canDelete, onDelete }) => {
+  const isImage = isImageName(att.filename);
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden min-w-0">
+      {isImage ? (
+        <a
+          href={att.file_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block group"
+          title="Open full size image"
+        >
+          <img
+            src={att.file_url}
+            alt={att.filename}
+            className="w-full max-h-80 object-contain bg-slate-50 cursor-zoom-in group-hover:opacity-90 transition-opacity"
+          />
+        </a>
+      ) : (
+        <div className="flex items-center gap-4 p-4 bg-brand-50/40">
+          <div className="h-16 w-16 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center shrink-0">
+            <FileText className="w-8 h-8 text-brand-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <a
+              href={att.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-slate-800 truncate block hover:text-brand-600"
+              title={att.filename}
+            >
+              {att.filename}
+            </a>
+            <span className="text-[11px] text-slate-500">
+              {att.uploaded_by_name ? `by ${att.uploaded_by_name}` : 'by Unknown'}
+              {att.file_size ? ` · ${formatFileSize(att.file_size)}` : ''}
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-slate-100">
+        <div className="min-w-0">
+          <a
+            href={att.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-medium text-slate-700 truncate block hover:text-brand-600"
+            title={att.filename}
+          >
+            {att.filename}
+          </a>
+          <span className="text-[10px] text-slate-400">
+            {att.uploaded_by_name ? `by ${att.uploaded_by_name}` : 'by Unknown'}
+            {att.file_size ? ` · ${formatFileSize(att.file_size)}` : ''}
+            {att.uploaded_at ? ` · ${new Date(att.uploaded_at).toLocaleString()}` : ''}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <a
+            href={att.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={att.filename}
+            className="p-1.5 text-slate-400 hover:text-brand-600 rounded transition-colors"
+            title="Download"
+          >
+            <Download className="w-4 h-4" />
+          </a>
+          {canDelete && (
+            <button
+              onClick={() => onDelete(att)}
+              className="p-1.5 text-slate-400 hover:text-rose-600 rounded transition-colors"
+              title="Delete attachment"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function TicketDetailPage() {
@@ -44,9 +130,8 @@ export default function TicketDetailPage() {
   const [allowTwoWay, setAllowTwoWay] = useState(true);
   const [reply, setReply] = useState('');
   const [isInternal, setIsInternal] = useState(false);
-  const [attachmentFiles, setAttachmentFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [attachmentError, setAttachmentError] = useState('');
+  const [replyFiles, setReplyFiles] = useState([]);
+  const [replyFileError, setReplyFileError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -68,12 +153,16 @@ export default function TicketDetailPage() {
 
         if (isAdmin) {
           const params = tData.target_department ? { department: tData.target_department } : {};
-          const usersRes = await userAPI.list(params);
-          const usersData = usersRes.data.results || usersRes.data;
-          let list = Array.isArray(usersData) ? usersData : [];
-          if (tData.assigned_to && !list.some((u) => u.id === tData.assigned_to.id)) {
-            list = [tData.assigned_to, ...list];
-          }
+          let list = tData.assigned_to ? [tData.assigned_to] : [];
+          try {
+            const usersRes = await userAPI.list(params);
+            const usersData = usersRes.data.results || usersRes.data;
+            if (Array.isArray(usersData)) {
+              list = [...usersData, ...list];
+            }
+          } catch {}
+          const seen = new Set();
+          list = list.filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)));
           setUsers(list);
         }
       } catch {} finally {
@@ -85,11 +174,12 @@ export default function TicketDetailPage() {
 
   const handleReply = async (e) => {
     e.preventDefault();
-    if (!reply.trim()) return;
+    if (!reply.trim() && !replyFiles.length) return;
     setSubmitting(true);
     const formData = new FormData();
     formData.append('content', reply);
     formData.append('is_internal_note', isInternal);
+    replyFiles.forEach(({ file }) => formData.append('file', file));
     try {
       const res = await ticketAPI.addMessage(id, formData);
       setTicket((prev) => ({
@@ -97,12 +187,24 @@ export default function TicketDetailPage() {
         messages: [...(prev.messages || []), res.data],
       }));
       setReply('');
-    } catch {} finally {
+      setIsInternal(false);
+      setReplyFiles((prev) => {
+        prev.forEach(({ preview }) => preview && URL.revokeObjectURL(preview));
+        return [];
+      });
+      setReplyFileError('');
+    } catch (err) {
+      const data = err.response?.data;
+      let msg = 'Failed to post reply.';
+      if (data?.content) msg = Array.isArray(data.content) ? data.content.join(' ') : data.content;
+      else if (data?.error) msg = data.error;
+      setReplyFileError(msg);
+    } finally {
       setSubmitting(false);
     }
   };
 
-  const handleAttachmentSelect = (e) => {
+  const handleReplyFileSelect = (e) => {
     const files = Array.from(e.target.files || []);
     const errors = [];
     const valid = [];
@@ -116,40 +218,19 @@ export default function TicketDetailPage() {
         errors.push(`"${file.name}" exceeds the 10 MB limit.`);
         return;
       }
-      valid.push(file);
+      valid.push({ file, preview: isImageName(file.name) ? URL.createObjectURL(file) : null });
     });
-    setAttachmentError(errors.join(' '));
-    setAttachmentFiles((prev) => [...prev, ...valid]);
+    setReplyFileError(errors.join(' '));
+    setReplyFiles((prev) => [...prev, ...valid]);
     e.target.value = '';
   };
 
-  const handleAttachmentUpload = async (e) => {
-    e.preventDefault();
-    if (!attachmentFiles.length) return;
-    setUploading(true);
-    setAttachmentError('');
-    try {
-      const fd = new FormData();
-      attachmentFiles.forEach((file) => fd.append('file', file));
-      const res = await ticketAPI.uploadAttachment(id, fd);
-      setTicket((prev) => ({
-        ...prev,
-        attachments: [...(prev.attachments || []), ...res.data],
-      }));
-      setAttachmentFiles([]);
-    } catch (err) {
-      const data = err.response?.data;
-      let msg = 'Failed to upload attachment.';
-      if (Array.isArray(data)) {
-        const fileErrors = data.flatMap((item) => (item?.file ? item.file : []));
-        if (fileErrors.length) msg = fileErrors.join(' ');
-      } else if (data?.error) {
-        msg = data.error;
-      }
-      setAttachmentError(msg);
-    } finally {
-      setUploading(false);
-    }
+  const removeReplyFile = (index) => {
+    setReplyFiles((prev) => {
+      const item = prev[index];
+      if (item?.preview) URL.revokeObjectURL(item.preview);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleAttachmentDelete = async (attId) => {
@@ -159,13 +240,17 @@ export default function TicketDetailPage() {
       setTicket((prev) => ({
         ...prev,
         attachments: (prev.attachments || []).filter((a) => a.id !== attId),
+        messages: (prev.messages || []).map((msg) => ({
+          ...msg,
+          attachments: (msg.attachments || []).filter((a) => a.id !== attId),
+        })),
       }));
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to delete attachment.');
     }
   };
 
-  const canDeleteAttachment = (att) => isStaff || att.uploaded_by === user?.id;
+  const canDeleteAttachment = (att) => att.uploaded_by === user?.id;
 
   const changeStatus = async (status) => {
     try {
@@ -179,6 +264,12 @@ export default function TicketDetailPage() {
     try {
       const res = await ticketAPI.reassign(id, { assigned_to: selectedStaff });
       setTicket(res.data);
+      setSelectedStaff(res.data.assigned_to?.id || '');
+      if (res.data.assigned_to) {
+        setUsers((prev) => prev.some((u) => u.id === res.data.assigned_to.id)
+          ? prev
+          : [res.data.assigned_to, ...prev]);
+      }
       alert('Ticket assignment updated successfully!');
     } catch {}
   };
@@ -195,8 +286,8 @@ export default function TicketDetailPage() {
   const handleEscalate = async () => {
     if (!window.confirm('Escalate this ticket to higher management level?')) return;
     try {
-      const res = await ticketAPI.escalate(id);
-      setTicket(res.data);
+      await ticketAPI.escalate(id);
+      navigate('/tickets');
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to escalate ticket.');
     }
@@ -205,8 +296,13 @@ export default function TicketDetailPage() {
   const handleDeescalate = async () => {
     if (!window.confirm('De-escalate this ticket back to previous management level?')) return;
     try {
-      const res = await ticketAPI.deescalate(id);
-      setTicket(res.data);
+      await ticketAPI.deescalate(id);
+      if (isAdmin) {
+        const res = await ticketAPI.detail(id);
+        setTicket(res.data);
+      } else {
+        navigate('/tickets');
+      }
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to de-escalate ticket.');
     }
@@ -359,112 +455,6 @@ export default function TicketDetailPage() {
             </div>
           </div>
 
-          {/* Attachments Card */}
-          {(ticket.attachments?.length > 0 || isStaff || isCreator) && (
-            <div className="custom-card p-6 space-y-4">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-200">
-                <Paperclip className="w-4 h-4 text-brand-600" />
-                Attachments ({ticket.attachments?.length || 0})
-              </h3>
-
-              {ticket.attachments?.length > 0 && (
-                <ul className="space-y-2">
-                  {ticket.attachments.map((att) => (
-                    <li key={att.id} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                      <a
-                        href={att.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 min-w-0 flex-1"
-                      >
-                        <FileText className="w-4 h-4 text-brand-600 shrink-0" />
-                        <span className="text-xs font-medium text-slate-700 truncate">{att.filename}</span>
-                      </a>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] text-slate-400">
-                          {att.uploaded_by_name}{att.file_size ? ` · ${formatFileSize(att.file_size)}` : ''}
-                        </span>
-                        <a
-                          href={att.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={att.filename}
-                          className="p-1.5 text-slate-400 hover:text-brand-600 rounded transition-colors"
-                          title="Download"
-                        >
-                          <Download className="w-4 h-4" />
-                        </a>
-                        {canDeleteAttachment(att) && (
-                          <button
-                            onClick={() => handleAttachmentDelete(att.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                            title="Delete attachment"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {(isStaff || isCreator) && (
-                <form onSubmit={handleAttachmentUpload} className="pt-3 border-t border-slate-200 space-y-3">
-                  <label className="flex items-center justify-center gap-2 px-4 py-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-brand-400 hover:bg-brand-50/40 transition-colors">
-                    <Upload className="w-5 h-5 text-slate-400" />
-                    <span className="text-xs text-slate-500">Select files to attach (max 10 MB each)</span>
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={handleAttachmentSelect}
-                    />
-                  </label>
-
-                  {attachmentFiles.length > 0 && (
-                    <ul className="space-y-2">
-                      {attachmentFiles.map((file, i) => (
-                        <li key={`${file.name}-${i}`} className="flex items-center justify-between gap-3 p-2 bg-slate-50 border border-slate-200 rounded-lg">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <FileText className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                            <span className="text-xs text-slate-700 truncate">{file.name}</span>
-                            <span className="text-[10px] text-slate-400 shrink-0">{formatFileSize(file.size)}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setAttachmentFiles((prev) => prev.filter((_, j) => j !== i))}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                            title="Remove file"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {attachmentError && (
-                    <p className="text-[11px] text-rose-600">{attachmentError}</p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={uploading || !attachmentFiles.length}
-                    className="w-full btn-secondary text-xs gap-1.5"
-                  >
-                    {uploading ? (
-                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-brand-600"></div>
-                    ) : (
-                      <Upload className="w-3.5 h-3.5" />
-                    )}
-                    <span>{uploading ? 'Uploading...' : 'Upload Attachments'}</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
           {/* Conversation Stream */}
           <div className="custom-card p-6 space-y-4">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-200">
@@ -490,6 +480,18 @@ export default function TicketDetailPage() {
                   <p className="text-xs text-slate-700 whitespace-pre-wrap">
                     {ticket.description}
                   </p>
+                  {(ticket.attachments || []).filter((a) => !a.message).length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {(ticket.attachments || []).filter((a) => !a.message).map((att) => (
+                        <ThreadAttachment
+                          key={att.id}
+                          att={att}
+                          canDelete={canDeleteAttachment(att)}
+                          onDelete={() => handleAttachmentDelete(att.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -520,6 +522,18 @@ export default function TicketDetailPage() {
                     <p className="text-xs text-slate-700 whitespace-pre-wrap">
                       {msg.content}
                     </p>
+                    {msg.attachments?.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {msg.attachments.map((att) => (
+                          <ThreadAttachment
+                            key={att.id}
+                            att={att}
+                            canDelete={canDeleteAttachment(att)}
+                            onDelete={() => handleAttachmentDelete(att.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -531,15 +545,50 @@ export default function TicketDetailPage() {
                 <textarea
                   rows={3}
                   className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="Type your response or resolution note here..."
+                  placeholder="Type your response or resolution note here... (optional if attaching files)"
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
-                  required
                 />
               </div>
 
-              <div className="flex items-center justify-between">
-                <div>
+              {replyFiles.length > 0 && (
+                <ul className="space-y-2">
+                  {replyFiles.map(({ file, preview }, i) => (
+                    <li key={`${file.name}-${i}`} className="flex items-start gap-3 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                      <FilePreview src={preview} name={file.name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs text-slate-700 truncate block">{file.name}</span>
+                        <span className="text-[10px] text-slate-400">{formatFileSize(file.size)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeReplyFile(i)}
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors shrink-0"
+                        title="Remove file"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {replyFileError && (
+                <p className="text-[11px] text-rose-600">{replyFileError}</p>
+              )}
+
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer hover:text-brand-600 transition-colors">
+                    <Paperclip className="w-4 h-4" />
+                    <span>Attach files</span>
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleReplyFileSelect}
+                    />
+                  </label>
                   {isStaff && (
                     <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
                       <input
@@ -555,7 +604,7 @@ export default function TicketDetailPage() {
 
                 <button
                   type="submit"
-                  disabled={submitting || !reply.trim()}
+                  disabled={submitting || (!reply.trim() && !replyFiles.length)}
                   className="btn-primary text-xs gap-1.5"
                 >
                   {submitting ? (
@@ -563,7 +612,7 @@ export default function TicketDetailPage() {
                   ) : (
                     <Send className="w-3.5 h-3.5" />
                   )}
-                  <span>Post Reply</span>
+                  <span>{replyFiles.length ? 'Post Reply with Attachment' : 'Post Reply'}</span>
                 </button>
               </div>
             </form>
@@ -621,7 +670,7 @@ export default function TicketDetailPage() {
             <div className="flex justify-between items-center text-xs py-2 border-b border-slate-100">
               <span className="text-slate-500">Category</span>
               <span className="font-medium text-brand-600">
-                {ticket.category?.name || 'Uncategorized'}
+                {ticket.category_name || 'Uncategorized'}
               </span>
             </div>
 

@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth import authenticate, login, logout
 import openpyxl
+import secrets
 
 from .models import User
 from .serializers import UserSerializer, UserCreateSerializer, BulkImportSerializer
@@ -11,6 +12,13 @@ from .serializers import UserSerializer, UserCreateSerializer, BulkImportSeriali
 class IsCampusAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == User.Role.CAMPUS_ADMIN
+
+
+class IsCampusAdminOrHod(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in [
+            User.Role.CAMPUS_ADMIN, User.Role.DEPT_ADMIN
+        ]
 
 
 class AuthViewSet(viewsets.ViewSet):
@@ -43,7 +51,9 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
     def get_permissions(self):
-        if self.action in ["create", "bulk_import", "destroy"]:
+        if self.action in ["create", "destroy"]:
+            return [IsCampusAdminOrHod()]
+        if self.action == "bulk_import":
             return [IsCampusAdmin()]
         return [permissions.IsAuthenticated()]
 
@@ -56,8 +66,11 @@ class UserViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         user = self.request.user
         target_dept = self.request.query_params.get("department")
-        if user.role == User.Role.DEPT_ADMIN:
-            qs = qs.filter(department=(target_dept or user.department))
+        if user.role == User.Role.CAMPUS_ADMIN:
+            pass
+        elif user.role == User.Role.DEPT_ADMIN:
+            # HODs can only manage staff within their own department.
+            qs = qs.filter(department=(target_dept or user.department), role=User.Role.STAFF)
         elif user.role == User.Role.STAFF:
             qs = qs.filter(department=(target_dept or user.department))
         elif user.role in [User.Role.STUDENT, User.Role.CR]:
@@ -67,6 +80,12 @@ class UserViewSet(viewsets.ModelViewSet):
                 User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
             ])
         return qs
+
+    def perform_destroy(self, instance):
+        if instance.id == self.request.user.id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You cannot delete your own account.")
+        super().perform_destroy(instance)
 
     @action(detail=False, methods=["post"])
     def set_availability(self, request):
@@ -117,7 +136,8 @@ class UserViewSet(viewsets.ModelViewSet):
                 department=str(dept or "") if dept else None,
                 section=str(section or "") if section else None,
             )
-            user.set_password("default123")
+            password = secrets.token_urlsafe(12)
+            user.set_password(password)
             user.save()
-            created.append(user.username)
+            created.append({"username": user.username, "password": password})
         return Response({"created": created, "errors": errors})

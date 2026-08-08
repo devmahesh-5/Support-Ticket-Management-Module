@@ -65,9 +65,9 @@ export default function TicketQuickPreview({ ticketId, onClose }) {
               <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-800">
                 Priority: {ticket.priority}
               </span>
-              {ticket.category?.name && (
+              {ticket.category_name && (
                 <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
-                  {ticket.category.name}
+                  {ticket.category_name}
                 </span>
               )}
             </div>

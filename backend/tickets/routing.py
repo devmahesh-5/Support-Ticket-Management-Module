@@ -2,7 +2,8 @@ from datetime import timedelta
 from django.db.models import Count, Q
 from django.utils import timezone
 from accounts.models import User
-from .models import Ticket, RoutingRule
+from .models import Ticket
+from .categories import get_category_route, get_category_sla
 
 
 MAX_ACTIVE_TICKETS = 5
@@ -26,41 +27,6 @@ def least_loaded_staff(filters):
         )
     ).order_by("active_count", "id")
     return candidates.filter(active_count__lt=MAX_ACTIVE_TICKETS).first()
-
-
-CATEGORY_ROUTES = {
-    "Lab Equipment":    {"target_dept": None,   "staff_type": User.StaffType.LAB},
-    "Classroom":        {"target_dept": None,   "staff_type": User.StaffType.TEACHER},
-    "Network / Internet": {"target_dept": "CIT", "staff_type": User.StaffType.IT},
-    "Financial / Fees": {"target_dept": "FIN",  "staff_type": User.StaffType.FINANCE},
-    "Academic":         {"target_dept": "ACA",  "staff_type": User.StaffType.ACADEMIC},
-    "Library":          {"target_dept": "LIB",  "staff_type": User.StaffType.LIBRARY},
-    "Hostel / Facilities": {"target_dept": "FAC", "staff_type": User.StaffType.FACILITIES},
-    "General / Other":  {"target_dept": "HOD",  "staff_type": None},
-}
-
-
-def get_category_route(category):
-    """Resolve a category to its routing target.
-
-    Active RoutingRule wins; falls back to the hardcoded CATEGORY_ROUTES.
-    Returns {"target_dept": <dept code or None>, "staff_type": ...} or None.
-    """
-    if not category:
-        return None
-
-    rule = RoutingRule.objects.filter(
-        category=category, is_active=True
-    ).order_by("priority").first()
-
-    if rule:
-        base = CATEGORY_ROUTES.get(category.name, {})
-        return {
-            "target_dept": None if rule.target_department == "SELF" else rule.target_department,
-            "staff_type": base.get("staff_type"),
-        }
-
-    return CATEGORY_ROUTES.get(category.name)
 
 
 def assign_ticket(ticket):
@@ -121,10 +87,8 @@ def assign_ticket(ticket):
 
     sla_hours = 24
     if ticket.category:
-        if ticket.category.sla_resolution_hours:
-            sla_hours = ticket.category.sla_resolution_hours
-        elif ticket.category.sla_response_hours:
-            sla_hours = ticket.category.sla_response_hours
+        resp_hours, res_hours = get_category_sla(ticket.category)
+        sla_hours = res_hours or resp_hours or 24
 
     ticket.sla_deadline = timezone.now() + timedelta(hours=sla_hours)
     ticket.save()

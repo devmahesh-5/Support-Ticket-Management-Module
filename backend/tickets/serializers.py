@@ -1,8 +1,9 @@
 from rest_framework import serializers
-from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, Attachment, SystemSetting
+from .models import Ticket, TicketMessage, StatusLog, Attachment, SystemSetting
 from accounts.serializers import UserSerializer
 from accounts.models import User
 from .routing import get_category_route
+from .categories import CATEGORIES
 
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {
@@ -21,56 +22,6 @@ class SystemSettingSerializer(serializers.ModelSerializer):
 
 
 
-class CategorySerializer(serializers.ModelSerializer):
-    target_department = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Category
-        fields = "__all__"
-
-    def get_target_department(self, obj):
-        route = get_category_route(obj)
-        return route["target_dept"] if route else None
-
-
-class RoutingRuleSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source="category.name", read_only=True)
-
-    class Meta:
-        model = RoutingRule
-        fields = "__all__"
-
-
-class TicketMessageSerializer(serializers.ModelSerializer):
-    author_name = serializers.SerializerMethodField()
-    author_role = serializers.CharField(source="author.role", read_only=True)
-
-    class Meta:
-        model = TicketMessage
-        fields = "__all__"
-        read_only_fields = ["author", "created_at"]
-
-    def get_author_name(self, obj):
-        return obj.author.get_full_name() or obj.author.username
-
-    def create(self, validated_data):
-        validated_data["author"] = self.context["request"].user
-        return super().create(validated_data)
-
-
-class StatusLogSerializer(serializers.ModelSerializer):
-    changed_by_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = StatusLog
-        fields = "__all__"
-
-    def get_changed_by_name(self, obj):
-        if obj.changed_by:
-            return obj.changed_by.get_full_name() or obj.changed_by.username
-        return "System"
-
-
 class AttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     file_size = serializers.SerializerMethodField()
@@ -79,8 +30,8 @@ class AttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attachment
         fields = [
-            "id", "ticket", "file", "filename", "file_url", "file_size",
-            "uploaded_by", "uploaded_by_name", "uploaded_at",
+            "id", "ticket", "message", "file", "filename", "file_url",
+            "file_size", "uploaded_by", "uploaded_by_name", "uploaded_at",
         ]
         read_only_fields = ["id", "filename", "uploaded_by", "uploaded_at"]
 
@@ -120,10 +71,41 @@ class AttachmentSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class TicketMessageSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+    author_role = serializers.CharField(source="author.role", read_only=True)
+    attachments = AttachmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TicketMessage
+        fields = "__all__"
+        read_only_fields = ["author", "created_at"]
+
+    def get_author_name(self, obj):
+        return obj.author.get_full_name() or obj.author.username
+
+    def create(self, validated_data):
+        validated_data["author"] = self.context["request"].user
+        return super().create(validated_data)
+
+
+class StatusLogSerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StatusLog
+        fields = "__all__"
+
+    def get_changed_by_name(self, obj):
+        if obj.changed_by:
+            return obj.changed_by.get_full_name() or obj.changed_by.username
+        return "System"
+
+
 class TicketListSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
     assigned_to_name = serializers.SerializerMethodField()
-    category_name = serializers.CharField(source="category.name", read_only=True, default="Uncategorized")
+    category_name = serializers.SerializerMethodField()
     message_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -134,6 +116,9 @@ class TicketListSerializer(serializers.ModelSerializer):
             "is_class_level", "sla_deadline", "sla_status", "sla_breached_at",
             "escalation_level", "created_at", "updated_at", "message_count",
         ]
+
+    def get_category_name(self, obj):
+        return obj.category or "Uncategorized"
 
     def get_created_by_name(self, obj):
         return obj.created_by.get_full_name() or obj.created_by.username
@@ -150,7 +135,7 @@ class TicketListSerializer(serializers.ModelSerializer):
 class TicketDetailSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     assigned_to = UserSerializer(read_only=True)
-    category = CategorySerializer(read_only=True)
+    category_name = serializers.SerializerMethodField()
     messages = TicketMessageSerializer(many=True, read_only=True)
     status_logs = StatusLogSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
@@ -160,6 +145,9 @@ class TicketDetailSerializer(serializers.ModelSerializer):
         model = Ticket
         fields = "__all__"
 
+    def get_category_name(self, obj):
+        return obj.category or "Uncategorized"
+
     def get_target_department(self, obj):
         route = get_category_route(obj.category)
         if route and route["target_dept"] and route["target_dept"] != "HOD":
@@ -168,6 +156,10 @@ class TicketDetailSerializer(serializers.ModelSerializer):
 
 
 class TicketCreateSerializer(serializers.ModelSerializer):
+    category = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True,
+        help_text="Hardcoded category name (see tickets.categories)",
+    )
     assigned_to = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
         required=False,
@@ -191,6 +183,13 @@ class TicketCreateSerializer(serializers.ModelSerializer):
             "STAFF", "DEPT_ADMIN", "CAMPUS_ADMIN",
         ]:
             raise serializers.ValidationError("Assignee must be a staff member or admin")
+        return value
+
+    def validate_category(self, value):
+        if value in (None, ""):
+            return value
+        if value not in CATEGORIES:
+            raise serializers.ValidationError("Unknown category.")
         return value
 
     def create(self, validated_data):

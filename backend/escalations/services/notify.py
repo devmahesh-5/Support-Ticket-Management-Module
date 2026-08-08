@@ -1,47 +1,15 @@
-"""Notification dispatch: in-app, email, SMS (future ready)."""
+"""Notification dispatch for the escalation engine (delegates to notifications.services).
 
-from django.conf import settings
+Channels come from the governing escalation policy (in-app / email / SMS
+toggles); when no policy governs the hop we fall back to in-app only.
+"""
 
-from notifications.models import Notification
-
-METHOD_IN_APP = "in_app"
-METHOD_EMAIL = "email"
-METHOD_SMS = "sms"
-
-
-def notify_user(user, title, message, ticket, notification_type="SYSTEM", methods=None):
-    """Send a notification through all requested channels. Returns channel names used."""
-    if methods is None:
-        methods = [METHOD_IN_APP]
-    dispatched = []
-
-    if METHOD_IN_APP in methods:
-        Notification.objects.create(
-            user=user,
-            title=title,
-            message=message,
-            notification_type=notification_type,
-            ticket=ticket,
-        )
-        dispatched.append(METHOD_IN_APP)
-
-    if METHOD_EMAIL in methods and user.email:
-        from django.core.mail import send_mail
-
-        send_mail(
-            title,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=True,
-        )
-        dispatched.append(METHOD_EMAIL)
-
-    if METHOD_SMS in methods:
-        # Future-ready: plug an SMS gateway here (Twilio, etc.).
-        dispatched.append(METHOD_SMS)
-
-    return dispatched
+from notifications.services import (
+    METHOD_EMAIL,
+    METHOD_IN_APP,
+    METHOD_SMS,
+    notify_user,
+)
 
 
 def policy_methods(policy):

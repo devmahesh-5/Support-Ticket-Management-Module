@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django_filters.rest_framework import FilterSet, DateFromToRangeFilter
 from django.db.models import Q, Count, Prefetch, F, Avg, Min
@@ -8,16 +9,18 @@ from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, Attachment, SystemSetting
+from .models import Ticket, TicketMessage, StatusLog, Attachment, SystemSetting, CategorySla
 from .serializers import (
-    CategorySerializer, RoutingRuleSerializer,
     TicketListSerializer, TicketDetailSerializer, TicketCreateSerializer,
     TicketMessageSerializer, StatusLogSerializer, AttachmentSerializer,
     SystemSettingSerializer,
 )
 from .routing import assign_ticket, ACTIVE_STATUSES
+from .categories import CATEGORY_NAMES, CATEGORY_BY_SLUG, category_dict
+from escalations.services.assign import escalation_level_for_assignee
 from accounts.models import User
 from notifications.models import Notification
+from notifications.services import METHOD_EMAIL, METHOD_IN_APP, notify_user
 
 
 class TicketFilter(FilterSet):
@@ -35,21 +38,36 @@ class IsStaffOrAdmin(permissions.BasePermission):
         ]
 
 
-class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
+class CategoryListView(APIView):
+    """Read-only list of the hardcoded ticket categories."""
+
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_permissions(self):
-        if self.action in ["create", "update", "partial_update", "destroy"]:
-            return [permissions.IsAuthenticated(), IsStaffOrAdmin()]
-        return [permissions.IsAuthenticated()]
+    def get(self, request):
+        return Response([category_dict(name) for name in CATEGORY_NAMES])
 
 
-class RoutingRuleViewSet(viewsets.ModelViewSet):
-    queryset = RoutingRule.objects.all().order_by("priority")
-    serializer_class = RoutingRuleSerializer
+class CategorySlaDetailView(APIView):
+    """Update the admin-configurable SLA target hours for a hardcoded category."""
+
     permission_classes = [permissions.IsAuthenticated, IsStaffOrAdmin]
+
+    def patch(self, request, slug):
+        name = CATEGORY_BY_SLUG.get(slug)
+        if name is None:
+            return Response({"detail": "Unknown category."}, status=status.HTTP_404_NOT_FOUND)
+        row, _ = CategorySla.objects.get_or_create(category=name)
+        for field in ("sla_response_hours", "sla_resolution_hours"):
+            if field in request.data:
+                try:
+                    value = int(request.data[field])
+                except (TypeError, ValueError):
+                    return Response({field: ["Must be an integer."]}, status=status.HTTP_400_BAD_REQUEST)
+                if value < 1 or value > 720:
+                    return Response({field: ["Must be between 1 and 720 hours."]}, status=status.HTTP_400_BAD_REQUEST)
+                setattr(row, field, value)
+        row.save()
+        return Response(category_dict(name))
 
 
 class TicketViewSet(viewsets.ModelViewSet):
@@ -100,10 +118,14 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     def _base_queryset(self):
         return Ticket.objects.select_related(
-            "category", "created_by", "assigned_to"
+            "created_by", "assigned_to"
         ).prefetch_related(
-            Prefetch("messages", queryset=self._visible_messages()),
+            Prefetch(
+                "messages",
+                queryset=self._visible_messages().prefetch_related("attachments__uploaded_by"),
+            ),
             "status_logs",
+            "attachments__uploaded_by",
         )
 
     def perform_create(self, serializer):
@@ -111,13 +133,23 @@ class TicketViewSet(viewsets.ModelViewSet):
         ticket = serializer.save(created_by=user)
         if not ticket.department and user.role in [User.Role.CR, User.Role.STUDENT]:
             ticket.department = user.department
-        ticket.escalation_level = 0
+        explicit = (
+            user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]
+            and ticket.assigned_to_id
+        )
+        ticket.escalation_level = (
+            escalation_level_for_assignee(ticket.assigned_to) if explicit else 0
+        )
         ticket.last_activity_at = timezone.now()
         ticket.save(update_fields=["department", "escalation_level", "last_activity_at", "updated_at"])
 
-        if not (user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN] and ticket.assigned_to_id):
+        if not explicit:
             assign_ticket(ticket)
-        ticket.refresh_from_db()
+            ticket.refresh_from_db()
+            ticket.escalation_level = escalation_level_for_assignee(ticket.assigned_to)
+            ticket.save(update_fields=["escalation_level", "updated_at"])
+        else:
+            ticket.refresh_from_db()
 
         from escalations.services.engine import evaluate_ticket
         evaluate_ticket(ticket)
@@ -127,21 +159,23 @@ class TicketViewSet(viewsets.ModelViewSet):
             note="Ticket created"
         )
         if ticket.assigned_to:
-            Notification.objects.create(
+            notify_user(
                 user=ticket.assigned_to,
                 title="New Ticket Assigned",
-                message=f"Ticket {ticket.ticket_id}: {ticket.title} has been assigned to you.",
-                notification_type="ASSIGNMENT",
+                message=f"Ticket '{ticket.title}' has been assigned to you.",
                 ticket=ticket,
+                notification_type="ASSIGNMENT",
+                methods=[METHOD_IN_APP, METHOD_EMAIL],
             )
 
     @action(detail=True, methods=["post"])
     def add_message(self, request, pk=None):
         ticket = self.get_object()
-        content = request.data.get("content")
+        content = request.data.get("content", "")
         is_internal = request.data.get("is_internal_note", "false") in ["true", "True", True]
+        files = request.FILES.getlist("file")
 
-        if not content:
+        if not content and not files:
             return Response({"error": "Content is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         if is_internal and request.user.role not in [
@@ -156,9 +190,19 @@ class TicketViewSet(viewsets.ModelViewSet):
             is_internal_note=is_internal,
         )
 
-        if request.FILES.get("file"):
-            message.file = request.FILES["file"]
-            message.save()
+        if files:
+            attachment_serializer = AttachmentSerializer(
+                data=[{"ticket": ticket.id, "message": message.id, "file": f} for f in files],
+                many=True,
+                context={"request": request},
+            )
+            if not attachment_serializer.is_valid():
+                message.delete()
+                return Response(
+                    attachment_serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            attachment_serializer.save()
 
         ticket.last_activity_at = timezone.now()
         ticket.save(update_fields=["last_activity_at", "updated_at"])
@@ -167,13 +211,16 @@ class TicketViewSet(viewsets.ModelViewSet):
             recipients = User.objects.filter(
                 Q(id=ticket.created_by_id) | Q(id=ticket.assigned_to_id)
             ).exclude(id=request.user.id).distinct()
+            author_name = request.user.get_full_name() or request.user.username
+            excerpt = content if len(content) <= 500 else content[:500] + "..."
             for recipient in recipients:
-                Notification.objects.create(
+                notify_user(
                     user=recipient,
                     title="New Reply",
-                    message=f"New reply on {ticket.ticket_id} by {request.user.get_full_name() or request.user.username}",
-                    notification_type="REPLY",
+                    message=f"Reply on '{ticket.title}' from {author_name}: {excerpt}",
                     ticket=ticket,
+                    notification_type="REPLY",
+                    methods=[METHOD_IN_APP, METHOD_EMAIL],
                 )
 
         return Response(TicketMessageSerializer(message, context={"request": request}).data)
@@ -224,12 +271,9 @@ class TicketViewSet(viewsets.ModelViewSet):
             )
 
         is_uploader = attachment.uploaded_by_id == request.user.id
-        is_staff = request.user.role in [
-            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
-        ]
-        if not (is_uploader or is_staff):
+        if not is_uploader:
             return Response(
-                {"error": "Only the uploader or staff/admin can delete this attachment"},
+                {"error": "Only the user who uploaded this attachment can delete it"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -298,12 +342,13 @@ class TicketViewSet(viewsets.ModelViewSet):
             changed_by=request.user, note=note
         )
 
-        Notification.objects.create(
+        notify_user(
             user=ticket.created_by,
             title=f"Ticket {new_status}",
-            message=f"Ticket {ticket.ticket_id} status changed to {new_status}.",
-            notification_type="STATUS_CHANGE",
+            message=f"Ticket '{ticket.title}' status changed to {new_status}.",
             ticket=ticket,
+            notification_type="STATUS_CHANGE",
+            methods=[METHOD_IN_APP, METHOD_EMAIL],
         )
 
         return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
@@ -332,12 +377,13 @@ class TicketViewSet(viewsets.ModelViewSet):
             note=f"Reassigned from {old_assignee} to {new_assignee}"
         )
 
-        Notification.objects.create(
+        notify_user(
             user=new_assignee,
             title="Ticket Reassigned",
-            message=f"Ticket {ticket.ticket_id} has been reassigned to you.",
-            notification_type="REASSIGNMENT",
+            message=f"Ticket '{ticket.title}' has been reassigned to you.",
             ticket=ticket,
+            notification_type="REASSIGNMENT",
+            methods=[METHOD_IN_APP, METHOD_EMAIL],
         )
 
         return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
@@ -434,7 +480,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         total = qs.count()
         by_status = qs.values("status").annotate(count=Count("id"))
         by_priority = qs.values("priority").annotate(count=Count("id"))
-        by_category = qs.values("category__name").annotate(count=Count("id"))
+        by_category = qs.values("category").annotate(count=Count("id"))
         overdue = qs.filter(
             sla_deadline__lt=timezone.now(),
             status__in=["OPEN", "IN_PROGRESS", "REOPENED"]
@@ -456,7 +502,7 @@ class TicketViewSet(viewsets.ModelViewSet):
             "total": total,
             "by_status": {s["status"]: s["count"] for s in by_status},
             "by_priority": {p["priority"]: p["count"] for p in by_priority},
-            "by_category": {c["category__name"] or "Uncategorized": c["count"] for c in by_category},
+            "by_category": {c["category"] or "Uncategorized": c["count"] for c in by_category},
             "overdue": overdue,
             "avg_resolution_hours": avg_resolution_hours,
             "missed_deadline_pct": missed_deadline_pct,
@@ -507,7 +553,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
         # Real Priority & Category breakdowns
         by_priority = {p["priority"]: p["count"] for p in qs.values("priority").annotate(count=Count("id"))}
-        by_category = {c["category__name"] or "General": c["count"] for c in qs.values("category__name").annotate(count=Count("id"))}
+        by_category = {c["category"] or "General": c["count"] for c in qs.values("category").annotate(count=Count("id"))}
 
         # Real Activity Feed from StatusLog & TicketMessage
         activity_logs = StatusLog.objects.select_related("ticket", "changed_by").order_by("-created_at")[:8]
@@ -587,7 +633,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
         by_status = {s["status"]: s["count"] for s in qs.values("status").annotate(count=Count("id"))}
         by_priority = {p["priority"]: p["count"] for p in qs.values("priority").annotate(count=Count("id"))}
-        by_category = {c["category__name"] or "Uncategorized": c["count"] for c in qs.values("category__name").annotate(count=Count("id"))}
+        by_category = {c["category"] or "Uncategorized": c["count"] for c in qs.values("category").annotate(count=Count("id"))}
         by_department = {d["department"] or "None": d["count"] for d in qs.values("department").annotate(count=Count("id"))}
 
         resolved = qs.filter(status__in=["RESOLVED", "CLOSED"], closed_at__isnull=False)
@@ -634,7 +680,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         from django.http import HttpResponse
 
         qs = self._apply_date_range(self.get_queryset(), request)
-        qs = qs.select_related("category", "created_by", "assigned_to").order_by("-created_at")
+        qs = qs.select_related("created_by", "assigned_to").order_by("-created_at")
 
         columns = request.query_params.get("columns")
         all_columns = [
@@ -660,7 +706,7 @@ class TicketViewSet(viewsets.ModelViewSet):
             row = []
             for c in selected:
                 if c == "category":
-                    row.append(t.category.name if t.category else "")
+                    row.append(t.category or "")
                 elif c == "created_by":
                     row.append(t.created_by.get_full_name() or t.created_by.username)
                 elif c == "assigned_to":

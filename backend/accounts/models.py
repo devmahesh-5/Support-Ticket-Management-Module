@@ -31,7 +31,31 @@ class User(AbstractUser):
         ACADEMIC = "ACADEMIC", "Academic Staff"
         LIBRARY = "LIBRARY", "Library Staff"
         FACILITIES = "FACILITIES", "Facilities Staff"
-        GENERAL = "GENERAL", "General Staff"
+
+    # Staff types each department may carry, driven by category routing.
+    # Academic departments handle their own Lab Equipment / Classroom tickets
+    # so they need LAB and TEACHER; the routed departments (CIT/FIN/ACA/LIB/FAC)
+    # each carry their single specialty. There is no GENERAL staff type - the
+    # "General / Other" category routes straight to the department HOD.
+    STAFF_TYPE_BY_DEPARTMENT = {
+        Department.CIVIL: [StaffType.LAB, StaffType.TEACHER],
+        Department.ELECTRICAL: [StaffType.LAB, StaffType.TEACHER],
+        Department.COMPUTER: [StaffType.LAB, StaffType.TEACHER],
+        Department.MECHANICAL: [StaffType.LAB, StaffType.TEACHER],
+        Department.ARCHITECTURE: [StaffType.LAB, StaffType.TEACHER],
+        Department.APPLIED_SCIENCES: [StaffType.LAB, StaffType.TEACHER],
+        Department.CIT: [StaffType.IT],
+        Department.FINANCE: [StaffType.FINANCE],
+        Department.ACADEMIC: [StaffType.ACADEMIC],
+        Department.LIBRARY: [StaffType.LIBRARY],
+        Department.FACILITIES: [StaffType.FACILITIES],
+    }
+
+    @classmethod
+    def allowed_staff_types(cls, department):
+        if not department:
+            return []
+        return cls.STAFF_TYPE_BY_DEPARTMENT.get(department, [])
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     department = models.CharField(max_length=3, choices=Department.choices, blank=True, null=True)
@@ -50,10 +74,20 @@ class User(AbstractUser):
         verbose_name_plural = "Users"
 
     def save(self, *args, **kwargs):
-        # Students/CRs do not carry a staff escalation level or staff type.
+        # Level hierarchy: staff have Level 1/2, HODs are fixed at Level 3,
+        # the campus admin is above the chain (no level), and students/CRs
+        # carry no escalation level or staff type.
         if self.role in (self.Role.STUDENT, self.Role.CR):
             self.level = None
             self.staff_type = None
+        elif self.role == self.Role.CAMPUS_ADMIN:
+            self.level = None
+            self.staff_type = None
+        elif self.role == self.Role.DEPT_ADMIN:
+            self.level = 3
+        elif self.role == self.Role.STAFF:
+            if self.level not in (1, 2):
+                self.level = 1
         super().save(*args, **kwargs)
 
     def __str__(self):

@@ -10,6 +10,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from tickets.models import StatusLog, Ticket
+from tickets.categories import get_category_sla
 
 from ..models import EscalationHistory, EscalationPolicy, EscalationRule
 from . import assign as assign_svc
@@ -41,7 +42,7 @@ def run_engine(ticket_ids=None, now=None):
     """Run a full evaluation pass over active tickets."""
     now = now or timezone.now()
     qs = Ticket.objects.filter(status__in=ACTIVE_STATUSES).select_related(
-        "escalation_policy", "category", "assigned_to", "created_by"
+        "escalation_policy", "assigned_to", "created_by"
     )
     if ticket_ids:
         qs = qs.filter(id__in=list(ticket_ids))
@@ -138,10 +139,10 @@ def _auto_step_when_breached(ticket, now):
 
 
 def _category_sla_hours(ticket):
-    """SLA targets come from the ticket's category, not the policy."""
-    if not ticket.category_id:
+    """SLA targets come from the ticket's category (admin-overridable), not the policy."""
+    if not ticket.category:
         return None, None
-    return ticket.category.sla_response_hours, ticket.category.sla_resolution_hours
+    return get_category_sla(ticket.category)
 
 
 def ensure_deadlines(ticket, policy, now=None):
@@ -261,7 +262,7 @@ def _send_threshold_notification(ticket, policy, user, pct, role, key, methods):
         user=user,
         title=f"SLA {pct}% reached - {ticket.ticket_id}",
         message=(
-            f"Ticket {ticket.ticket_id} ('{ticket.title}') has reached {pct}% of its "
+            f"Ticket '{ticket.title}' has reached {pct}% of its "
             f"resolution SLA (deadline {ticket.sla_deadline:%Y-%m-%d %H:%M}). "
             f"Current status: {ticket.get_status_display()}."
         ),
@@ -361,7 +362,7 @@ def _context(ticket, now):
         "status": ticket.status,
         "sla_status": ticket.sla_status,
         "department": ticket.department,
-        "category": ticket.category_id,
+        "category": ticket.category,
         "escalation_level": ticket.escalation_level,
         "no_activity_hours": round(max(0, (now - last_activity).total_seconds() / 3600), 2),
         "sla_resolution_pct": _pct_now(ticket, now),

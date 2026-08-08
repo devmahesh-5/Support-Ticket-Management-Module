@@ -6,8 +6,14 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Notification, NotificationTemplate
-from .serializers import NotificationSerializer, NotificationTemplateSerializer
+from tickets.views import IsStaffOrAdmin
+
+from .models import Notification, NotificationSetting, NotificationTemplate
+from .serializers import (
+    NotificationSerializer,
+    NotificationSettingSerializer,
+    NotificationTemplateSerializer,
+)
 
 
 def notification_stream(request):
@@ -77,3 +83,15 @@ class NotificationTemplateViewSet(viewsets.ModelViewSet):
     queryset = NotificationTemplate.objects.all()
     serializer_class = NotificationTemplateSerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+class NotificationSettingViewSet(viewsets.ModelViewSet):
+    """Per-notification-type channel toggles (email on/off). In-App is always on.
+
+    Admin/HOD/staff can flip the email switch for each type; the dispatcher
+    in ``escalations.services.notify`` honors these settings.
+    """
+
+    queryset = NotificationSetting.objects.all()
+    serializer_class = NotificationSettingSerializer
+    permission_classes = [permissions.IsAuthenticated, IsStaffOrAdmin]

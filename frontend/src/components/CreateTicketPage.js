@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusCircle, FileText, Send, X, CheckCircle2, HelpCircle, Upload } from 'lucide-react';
+import { PlusCircle, Send, X, CheckCircle2, HelpCircle, Upload } from 'lucide-react';
 import { ticketAPI, categoryAPI, userAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import FilePreview from './common/FilePreview';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'zip'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+
+const isImageName = (name = '') => IMAGE_EXTENSIONS.includes(name.split('.').pop().toLowerCase());
 
 export default function CreateTicketPage() {
   const navigate = useNavigate();
@@ -87,7 +91,7 @@ export default function CreateTicketPage() {
 
       if (attachments.length) {
         const fd = new FormData();
-        attachments.forEach((file) => fd.append('file', file));
+        attachments.forEach(({ file }) => fd.append('file', file));
         try {
           await ticketAPI.uploadAttachment(res.data.id, fd);
         } catch (uploadErr) {
@@ -120,12 +124,19 @@ export default function CreateTicketPage() {
       valid.push(file);
     });
     setAttachmentError(errors.join(' '));
-    setAttachments((prev) => [...prev, ...valid]);
+    setAttachments((prev) => [
+      ...prev,
+      ...valid.map((file) => ({ file, preview: isImageName(file.name) ? URL.createObjectURL(file) : null })),
+    ]);
     e.target.value = '';
   };
 
   const removeAttachment = (index) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
+    setAttachments((prev) => {
+      const item = prev[index];
+      if (item?.preview) URL.revokeObjectURL(item.preview);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   return (
@@ -315,17 +326,17 @@ export default function CreateTicketPage() {
 
             {attachments.length > 0 && (
               <ul className="mt-3 space-y-2">
-                {attachments.map((file, i) => (
-                  <li key={`${file.name}-${i}`} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 text-brand-600 shrink-0" />
-                      <span className="text-xs text-slate-700 truncate">{file.name}</span>
-                      <span className="text-[10px] text-slate-400 shrink-0">{(file.size / 1024).toFixed(1)} KB</span>
+                {attachments.map(({ file, preview }, i) => (
+                  <li key={`${file.name}-${i}`} className="flex items-start gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    <FilePreview src={preview} name={file.name} />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs text-slate-700 truncate block">{file.name}</span>
+                      <span className="text-[10px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeAttachment(i)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors shrink-0"
                       title="Remove file"
                     >
                       <X className="w-4 h-4" />

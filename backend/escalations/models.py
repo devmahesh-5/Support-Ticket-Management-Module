@@ -51,10 +51,9 @@ class EscalationPolicy(TimeStampedModel):
     description = models.TextField(blank=True)
     is_enabled = models.BooleanField(default=True)
     department = models.CharField(max_length=3, blank=True, null=True, help_text="Restrict policy to a department (blank = all tickets)")
-    category = models.ForeignKey(
-        "tickets.Category", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="escalation_policies",
-        help_text="Restrict policy to a category (blank = all tickets)",
+    category = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="Restrict policy to a hardcoded category name (blank = all tickets)",
     )
     priority = models.CharField(
         max_length=10, blank=True, null=True,

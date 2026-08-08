@@ -121,7 +121,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
               </Select>
             )} />
             <FormField name="category" label="Category (optional)" children={({ field }) => (
-              <Select {...field} value={field.value || ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}>
+              <Select {...field} value={field.value || ""} onChange={(e) => field.onChange(e.target.value || null)}>
                 <option value="">Any Category</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>

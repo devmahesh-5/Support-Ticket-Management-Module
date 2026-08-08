@@ -20,7 +20,7 @@ def match_policy(ticket, policy_id=None):
     for policy in EscalationPolicy.objects.filter(is_enabled=True):
         if policy.department and policy.department != ticket.department:
             continue
-        if policy.category_id and policy.category_id != ticket.category_id:
+        if policy.category and policy.category != ticket.category:
             continue
         if policy.priority and policy.priority != ticket.priority:
             continue
@@ -29,7 +29,7 @@ def match_policy(ticket, policy_id=None):
         score = 0
         if policy.department:
             score += 4
-        if policy.category_id:
+        if policy.category:
             score += 3
         if policy.priority:
             score += 2
