@@ -13,10 +13,25 @@ import {
   CornerDownRight,
   UserCheck,
   ArrowDownCircle,
-  Tag
+  Tag,
+  Paperclip,
+  Download,
+  Trash2,
+  Upload,
+  X
 } from 'lucide-react';
 import { ticketAPI, userAPI, systemSettingAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'zip'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const formatFileSize = (bytes) => {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 export default function TicketDetailPage() {
   const { id } = useParams();
@@ -29,6 +44,9 @@ export default function TicketDetailPage() {
   const [allowTwoWay, setAllowTwoWay] = useState(true);
   const [reply, setReply] = useState('');
   const [isInternal, setIsInternal] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -83,6 +101,71 @@ export default function TicketDetailPage() {
       setSubmitting(false);
     }
   };
+
+  const handleAttachmentSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    const errors = [];
+    const valid = [];
+    files.forEach((file) => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        errors.push(`"${file.name}" has an unsupported file type.`);
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        errors.push(`"${file.name}" exceeds the 10 MB limit.`);
+        return;
+      }
+      valid.push(file);
+    });
+    setAttachmentError(errors.join(' '));
+    setAttachmentFiles((prev) => [...prev, ...valid]);
+    e.target.value = '';
+  };
+
+  const handleAttachmentUpload = async (e) => {
+    e.preventDefault();
+    if (!attachmentFiles.length) return;
+    setUploading(true);
+    setAttachmentError('');
+    try {
+      const fd = new FormData();
+      attachmentFiles.forEach((file) => fd.append('file', file));
+      const res = await ticketAPI.uploadAttachment(id, fd);
+      setTicket((prev) => ({
+        ...prev,
+        attachments: [...(prev.attachments || []), ...res.data],
+      }));
+      setAttachmentFiles([]);
+    } catch (err) {
+      const data = err.response?.data;
+      let msg = 'Failed to upload attachment.';
+      if (Array.isArray(data)) {
+        const fileErrors = data.flatMap((item) => (item?.file ? item.file : []));
+        if (fileErrors.length) msg = fileErrors.join(' ');
+      } else if (data?.error) {
+        msg = data.error;
+      }
+      setAttachmentError(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleAttachmentDelete = async (attId) => {
+    if (!window.confirm('Delete this attachment?')) return;
+    try {
+      await ticketAPI.deleteAttachment(id, attId);
+      setTicket((prev) => ({
+        ...prev,
+        attachments: (prev.attachments || []).filter((a) => a.id !== attId),
+      }));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete attachment.');
+    }
+  };
+
+  const canDeleteAttachment = (att) => isStaff || att.uploaded_by === user?.id;
 
   const changeStatus = async (status) => {
     try {
@@ -275,6 +358,112 @@ export default function TicketDetailPage() {
               </p>
             </div>
           </div>
+
+          {/* Attachments Card */}
+          {(ticket.attachments?.length > 0 || isStaff || isCreator) && (
+            <div className="custom-card p-6 space-y-4">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2 pb-3 border-b border-slate-200">
+                <Paperclip className="w-4 h-4 text-brand-600" />
+                Attachments ({ticket.attachments?.length || 0})
+              </h3>
+
+              {ticket.attachments?.length > 0 && (
+                <ul className="space-y-2">
+                  {ticket.attachments.map((att) => (
+                    <li key={att.id} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                      <a
+                        href={att.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 min-w-0 flex-1"
+                      >
+                        <FileText className="w-4 h-4 text-brand-600 shrink-0" />
+                        <span className="text-xs font-medium text-slate-700 truncate">{att.filename}</span>
+                      </a>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] text-slate-400">
+                          {att.uploaded_by_name}{att.file_size ? ` · ${formatFileSize(att.file_size)}` : ''}
+                        </span>
+                        <a
+                          href={att.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={att.filename}
+                          className="p-1.5 text-slate-400 hover:text-brand-600 rounded transition-colors"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                        {canDeleteAttachment(att) && (
+                          <button
+                            onClick={() => handleAttachmentDelete(att.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                            title="Delete attachment"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {(isStaff || isCreator) && (
+                <form onSubmit={handleAttachmentUpload} className="pt-3 border-t border-slate-200 space-y-3">
+                  <label className="flex items-center justify-center gap-2 px-4 py-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-brand-400 hover:bg-brand-50/40 transition-colors">
+                    <Upload className="w-5 h-5 text-slate-400" />
+                    <span className="text-xs text-slate-500">Select files to attach (max 10 MB each)</span>
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleAttachmentSelect}
+                    />
+                  </label>
+
+                  {attachmentFiles.length > 0 && (
+                    <ul className="space-y-2">
+                      {attachmentFiles.map((file, i) => (
+                        <li key={`${file.name}-${i}`} className="flex items-center justify-between gap-3 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                            <span className="text-xs text-slate-700 truncate">{file.name}</span>
+                            <span className="text-[10px] text-slate-400 shrink-0">{formatFileSize(file.size)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAttachmentFiles((prev) => prev.filter((_, j) => j !== i))}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                            title="Remove file"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {attachmentError && (
+                    <p className="text-[11px] text-rose-600">{attachmentError}</p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={uploading || !attachmentFiles.length}
+                    className="w-full btn-secondary text-xs gap-1.5"
+                  >
+                    {uploading ? (
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-brand-600"></div>
+                    ) : (
+                      <Upload className="w-3.5 h-3.5" />
+                    )}
+                    <span>{uploading ? 'Uploading...' : 'Upload Attachments'}</span>
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
 
           {/* Conversation Stream */}
           <div className="custom-card p-6 space-y-4">

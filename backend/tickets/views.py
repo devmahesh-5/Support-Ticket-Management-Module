@@ -8,11 +8,12 @@ from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, SystemSetting
+from .models import Category, RoutingRule, Ticket, TicketMessage, StatusLog, Attachment, SystemSetting
 from .serializers import (
     CategorySerializer, RoutingRuleSerializer,
     TicketListSerializer, TicketDetailSerializer, TicketCreateSerializer,
-    TicketMessageSerializer, StatusLogSerializer, SystemSettingSerializer,
+    TicketMessageSerializer, StatusLogSerializer, AttachmentSerializer,
+    SystemSettingSerializer,
 )
 from .routing import assign_ticket, ACTIVE_STATUSES
 from accounts.models import User
@@ -176,6 +177,69 @@ class TicketViewSet(viewsets.ModelViewSet):
                 )
 
         return Response(TicketMessageSerializer(message, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"])
+    def upload_attachment(self, request, pk=None):
+        ticket = self.get_object()
+        files = request.FILES.getlist("file")
+
+        if not files:
+            return Response(
+                {"error": "No file provided. Use the 'file' form field."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = AttachmentSerializer(
+            data=[{"ticket": ticket.id, "file": f} for f in files],
+            many=True,
+            context={"request": request},
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer.save()
+
+        ticket.last_activity_at = timezone.now()
+        ticket.save(update_fields=["last_activity_at", "updated_at"])
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"])
+    def delete_attachment(self, request, pk=None):
+        ticket = self.get_object()
+        attachment_id = request.data.get("attachment_id") or request.query_params.get("attachment_id")
+
+        if not attachment_id:
+            return Response(
+                {"error": "attachment_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            attachment = Attachment.objects.get(id=attachment_id, ticket=ticket)
+        except Attachment.DoesNotExist:
+            return Response(
+                {"error": "Attachment not found on this ticket"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        is_uploader = attachment.uploaded_by_id == request.user.id
+        is_staff = request.user.role in [
+            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
+        ]
+        if not (is_uploader or is_staff):
+            return Response(
+                {"error": "Only the uploader or staff/admin can delete this attachment"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        attachment.file.delete(save=False)
+        attachment.delete()
+
+        ticket.last_activity_at = timezone.now()
+        ticket.save(update_fields=["last_activity_at", "updated_at"])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
     def change_status(self, request, pk=None):
