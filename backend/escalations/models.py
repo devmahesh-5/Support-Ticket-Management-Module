@@ -20,7 +20,12 @@ SUPPORT_LEVEL_CHOICES = [
 
 
 class SupportQueue(TimeStampedModel):
-    """Support queues (Level 1 Queue, Network Queue, Escalation Queue, ...)."""
+    """The fixed escalation queue.
+
+    Not configurable: exactly one escalation queue always exists and tickets
+    are moved into it by the escalation engine. Nothing else should ever be
+    created here (API and admin are read-only).
+    """
 
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
@@ -33,6 +38,13 @@ class SupportQueue(TimeStampedModel):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_escalation_queue"],
+                name="single_escalation_queue",
+                condition=models.Q(is_escalation_queue=True),
+            ),
+        ]
 
     def __str__(self):
         return self.name

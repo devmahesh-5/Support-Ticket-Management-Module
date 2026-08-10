@@ -434,14 +434,21 @@ export default function TicketDetailPage() {
                 </h1>
               </div>
 
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                ticket.status === 'OPEN' ? 'bg-blue-100 text-blue-800' :
-                ticket.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' :
-                ticket.status === 'RESOLVED' || ticket.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
-                'bg-rose-100 text-rose-800'
-              }`}>
-                {ticket.status?.replace('_', ' ')}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                  ticket.status === 'OPEN' ? 'bg-blue-100 text-blue-800' :
+                  ticket.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' :
+                  ticket.status === 'RESOLVED' || ticket.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
+                  'bg-rose-100 text-rose-800'
+                }`}>
+                  {ticket.status?.replace('_', ' ')}
+                </span>
+                {ticket.sla_status === 'BREACHED' && (
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-600 text-white">
+                    SLA Breached
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Description Block */}
@@ -709,6 +716,7 @@ export default function TicketDetailPage() {
               </span>
               <span className={`font-semibold ${ticket.sla_deadline && new Date(ticket.sla_deadline) < new Date() ? 'text-rose-600 font-bold' : 'text-slate-800'}`}>
                 {ticket.sla_deadline ? new Date(ticket.sla_deadline).toLocaleString() : 'N/A'}
+                {ticket.sla_status === 'BREACHED' && <span className="ml-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white">Breached</span>}
               </span>
             </div>
           </div>

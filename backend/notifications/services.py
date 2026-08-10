@@ -6,6 +6,8 @@ are always created; email is only sent when the requested channel includes
 future-ready (stub).
 """
 
+import threading
+
 from django.conf import settings
 
 from .models import Notification, NotificationSetting
@@ -52,19 +54,29 @@ def notify_user(user, title, message, ticket=None, notification_type="SYSTEM", m
         dispatched.append(METHOD_IN_APP)
 
     if METHOD_EMAIL in methods and user.email and email_enabled_for(notification_type):
-        from django.core.mail import send_mail
+        threading.Thread(
+            target=_send_email,
+            args=(title, message, user.email),
+            name="email-send",
+            daemon=True,
+        ).start()
+        dispatched.append(METHOD_EMAIL)
 
+    return dispatched
+
+
+def _send_email(title, message, to_email):
+    """Send email off the request thread; errors are swallowed."""
+    from django.core.mail import send_mail
+    from django.db import connections
+
+    try:
         send_mail(
             title,
             message,
             settings.DEFAULT_FROM_EMAIL,
-            [user.email],
+            [to_email],
             fail_silently=True,
         )
-        dispatched.append(METHOD_EMAIL)
-
-    if METHOD_SMS in methods:
-        # Future-ready: plug an SMS gateway here (Twilio, etc.).
-        dispatched.append(METHOD_SMS)
-
-    return dispatched
+    finally:
+        connections.close_all()

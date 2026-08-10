@@ -38,7 +38,7 @@ def _visible_tickets(user):
     return qs.filter(created_by=user)
 
 
-class SupportQueueViewSet(viewsets.ModelViewSet):
+class SupportQueueViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = SupportQueue.objects.all()
     serializer_class = SupportQueueSerializer
     permission_classes = [permissions.IsAuthenticated, IsStaffOrAdmin]
@@ -115,7 +115,7 @@ class EscalationDashboardViewSet(viewsets.ViewSet):
         approaching = qs.filter(sla_status="APPROACHING", status__in=ACTIVE).order_by("sla_deadline")
         breached = qs.filter(sla_status="BREACHED", status__in=ACTIVE)
         escalation_q = qs.filter(queue__is_escalation_queue=True, status__in=ACTIVE)
-        waiting = qs.filter(assigned_to__isnull=True, status__in=ACTIVE).order_by("created_at")
+        waiting = qs.filter(assigned_to__isnull=True, queue__isnull=True, status__in=ACTIVE).order_by("created_at")
         longest_breached = breached.filter(sla_breached_at__isnull=False).order_by("sla_breached_at")[:10]
 
         breach_ages = breached.filter(sla_breached_at__isnull=False)
@@ -150,11 +150,14 @@ class EscalationDashboardViewSet(viewsets.ViewSet):
         ticket = self.get_object(pk)
         user_id = request.data.get("assigned_to")
         from accounts.models import User as AuthUser
+        from .services.assign import escalation_level_for_assignee
         try:
             assignee = AuthUser.objects.get(id=user_id)
         except AuthUser.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
         ticket.assigned_to = assignee
+        ticket.queue = None
+        ticket.escalation_level = escalation_level_for_assignee(assignee)
         ticket.save()
         from .services.audit import log
         from .models import EscalationHistory

@@ -40,11 +40,6 @@ function RowActions({ row, mode, staff, reload }) {
             Assign
           </Button>
         )}
-        {mode === "escalation_queue" && (
-          <Button variant="outline" size="sm" onClick={() => run(() => escalationAPI.dashboard.keepOwner(row.id))}>
-            Keep Owner
-          </Button>
-        )}
         <Button variant="outline" size="sm" onClick={() => { setExpanded(expanded === "priority" ? null : "priority"); }}>
           Priority
         </Button>

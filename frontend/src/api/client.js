@@ -78,7 +78,6 @@ export const escalationAPI = {
   dashboard: {
     get: () => api.get("/escalations/dashboard/dashboard/"),
     assign: (id, data) => api.post(`/escalations/dashboard/${id}/assign/`, data),
-    keepOwner: (id) => api.post(`/escalations/dashboard/${id}/keep_owner/`),
     increasePriority: (id, data) => api.post(`/escalations/dashboard/${id}/increase_priority/`, data),
     resolve: (id) => api.post(`/escalations/dashboard/${id}/resolve/`),
   },

@@ -19,6 +19,16 @@ class SupportQueueAdmin(admin.ModelAdmin):
     list_display = ["name", "department", "is_escalation_queue", "is_active"]
     list_filter = ["department", "is_escalation_queue", "is_active"]
     filter_horizontal = ["members"]
+    readonly_fields = [f.name for f in SupportQueue._meta.fields] + ["members"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(EscalationPolicy)

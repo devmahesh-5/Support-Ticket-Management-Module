@@ -28,6 +28,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState('stats');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [staffFilter, setStaffFilter] = useState({ role: '', staff_type: '', department: '', level: '' });
   const [allowTwoWay, setAllowTwoWay] = useState(true);
   const [savingCategory, setSavingCategory] = useState(null);
 
@@ -98,12 +99,16 @@ export default function AdminPage() {
     loadReport();
   }, []);
 
-  const loadReport = async (from = dateFrom, to = dateTo) => {
+  const loadReport = async (from = dateFrom, to = dateTo, sf = staffFilter) => {
     setReportLoading(true);
     try {
       const params = {};
       if (from) params.start = from;
       if (to) params.end = to;
+      if (sf.role) params.staff_role = sf.role;
+      if (sf.staff_type) params.staff_type = sf.staff_type;
+      if (sf.department) params.staff_department = sf.department;
+      if (sf.level) params.staff_level = sf.level;
       const res = await ticketAPI.report(params);
       setReport(res.data);
     } catch {
@@ -349,6 +354,53 @@ export default function AdminPage() {
               </button>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold text-slate-700">Filter Staff:</span>
+              {canManageAll && (
+                <select
+                  className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  value={staffFilter.department}
+                  onChange={(e) => { const v = { ...staffFilter, department: e.target.value }; setStaffFilter(v); loadReport(dateFrom, dateTo, v); }}
+                >
+                  <option value="">All Depts</option>
+                  {DEPARTMENTS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              )}
+              <select
+                className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                value={staffFilter.role}
+                onChange={(e) => { const v = { ...staffFilter, role: e.target.value }; setStaffFilter(v); loadReport(dateFrom, dateTo, v); }}
+              >
+                <option value="">All Roles</option>
+                <option value="STAFF">Staff</option>
+                <option value="HOD">HOD</option>
+              </select>
+              <select
+                className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                value={staffFilter.level}
+                onChange={(e) => { const v = { ...staffFilter, level: e.target.value }; setStaffFilter(v); loadReport(dateFrom, dateTo, v); }}
+              >
+                <option value="">All Levels</option>
+                <option value="1">Level 1</option>
+                <option value="2">Level 2</option>
+                <option value="3">Level 3</option>
+              </select>
+              <select
+                className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                value={staffFilter.staff_type}
+                onChange={(e) => { const v = { ...staffFilter, staff_type: e.target.value }; setStaffFilter(v); loadReport(dateFrom, dateTo, v); }}
+              >
+                <option value="">All Types</option>
+                <option value="LAB">Lab</option>
+                <option value="TEACHER">Teacher</option>
+                <option value="IT">IT</option>
+                <option value="FINANCE">Finance</option>
+                <option value="ACADEMIC">Academic</option>
+                <option value="LIBRARY">Library</option>
+                <option value="FACILITIES">Facilities</option>
+              </select>
+            </div>
+
             <button
               onClick={handleExport}
               className="btn-secondary text-xs gap-1.5"
@@ -383,9 +435,15 @@ export default function AdminPage() {
                     <thead className="bg-slate-50 text-slate-500 uppercase font-semibold">
                       <tr>
                         <th className="p-2">Staff</th>
+                        <th className="p-2">Role</th>
                         <th className="p-2">Dept</th>
-                        <th className="p-2">Handled</th>
+                        <th className="p-2">Type</th>
+                        <th className="p-2">Level</th>
+                        <th className="p-2">Assigned</th>
+                        <th className="p-2">Resolved</th>
                         <th className="p-2">Open</th>
+                        <th className="p-2">Overdue</th>
+                        <th className="p-2">Breached</th>
                         <th className="p-2">Avg Resp</th>
                       </tr>
                     </thead>
@@ -393,9 +451,15 @@ export default function AdminPage() {
                       {report.staff_metrics?.map((s, i) => (
                         <tr key={i}>
                           <td className="p-2 font-medium text-slate-900">{s.name}</td>
+                          <td className="p-2 text-slate-500">{s.role === 'DEPT_ADMIN' ? 'HOD' : s.role}</td>
                           <td className="p-2 text-slate-500">{s.department || '-'}</td>
-                          <td className="p-2 font-bold text-slate-800">{s.tickets_handled}</td>
+                          <td className="p-2 text-slate-500">{s.staff_type || '-'}</td>
+                          <td className="p-2 text-slate-500">{s.level ?? '-'}</td>
+                          <td className="p-2 font-bold text-slate-800">{s.tickets_assigned}</td>
+                          <td className="p-2 font-bold text-emerald-600">{s.resolved}</td>
                           <td className="p-2 text-amber-600">{s.open_tickets}</td>
+                          <td className={`p-2 font-semibold ${s.overdue ? 'text-rose-600' : 'text-slate-400'}`}>{s.overdue}</td>
+                          <td className={`p-2 font-semibold ${s.sla_breached ? 'text-rose-700' : 'text-slate-400'}`}>{s.sla_breached}</td>
                           <td className="p-2 text-slate-400">{s.avg_response_hours != null ? `${s.avg_response_hours}h` : '-'}</td>
                         </tr>
                       ))}
@@ -473,40 +537,40 @@ export default function AdminPage() {
                   )}
                   <option value="STAFF">Staff</option>
                 </select>
-                {newUser.role === 'STAFF' && (
+                {isHod ? (
+                  <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+                    Department: {user.department}
+                  </div>
+                ) : (
                   <select
                     className="p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                    value={newUser.staff_type}
-                    onChange={(e) => setNewUser({ ...newUser, staff_type: e.target.value })}
+                    value={newUser.department}
+                    onChange={(e) => {
+                      const dept = e.target.value;
+                      const current = newUser.staff_type;
+                      setNewUser({
+                        ...newUser,
+                        department: dept,
+                        staff_type: staffTypeOptions(dept).includes(current) ? current : '',
+                      });
+                    }}
                   >
-                    <option value="">Staff Type</option>
-                    {staffTypeOptions(newUser.department).map((st) => (
-                      <option key={st} value={st}>{st}</option>
+                    <option value="">Department</option>
+                    {DEPARTMENTS.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
                     ))}
                   </select>
                 )}
               </div>
-              {isHod ? (
-                <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
-                  Department: {user.department}
-                </div>
-              ) : (
+              {newUser.role === 'STAFF' && (
                 <select
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
-                  value={newUser.department}
-                  onChange={(e) => {
-                    const dept = e.target.value;
-                    const current = newUser.staff_type;
-                    setNewUser({
-                      ...newUser,
-                      department: dept,
-                      staff_type: staffTypeOptions(dept).includes(current) ? current : '',
-                    });
-                  }}
+                  value={newUser.staff_type}
+                  onChange={(e) => setNewUser({ ...newUser, staff_type: e.target.value })}
                 >
-                  <option value="">Department</option>
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
+                  <option value="">Staff Type</option>
+                  {staffTypeOptions(newUser.department).map((st) => (
+                    <option key={st} value={st}>{st}</option>
                   ))}
                 </select>
               )}

@@ -50,6 +50,7 @@ export default function DashboardPage() {
 
   // Real backend metrics
   const openCount = stats?.open || 0;
+  const inProgressCount = stats?.in_progress || 0;
   const closedCount = stats?.closed || 0;
   const escalatedCount = stats?.escalated || 0;
   const myTicketsCount = stats?.my_tickets || 0;
@@ -85,19 +86,27 @@ export default function DashboardPage() {
     navigate(`/tickets?priority=${priorityKey}`);
   };
 
-  // Real overview bar chart dataset (open / resolved / overdue / escalated / assigned)
+  // Real overview bar chart dataset (open / in progress / resolved / overdue / escalated / assigned)
   const overviewData = [
     { name: 'Open', value: openCount, color: '#0070c7' },
+    { name: 'In Progress', value: inProgressCount, color: '#f59e0b' },
     { name: 'Resolved', value: closedCount, color: '#10b981' },
     { name: 'Overdue', value: overdueCount, color: '#ef4444' },
-    { name: 'Escalated', value: escalatedCount, color: '#f59e0b' },
-    { name: 'Assigned to Me', value: myTicketsCount, color: '#8b5cf6' },
+    { name: 'Escalated', value: escalatedCount, color: '#8b5cf6' },
+    { name: 'Assigned to Me', value: myTicketsCount, color: '#06b6d4' },
   ];
 
   const filterByOverview = (name) => {
-    if (name === 'Open') return filterByStatus('OPEN');
-    if (name === 'Resolved') return filterByStatus('RESOLVED');
-    if (name === 'Escalated') return filterByStatus('ESCALATED_L1');
+    const withMine = (params) => {
+      const sp = new URLSearchParams(params);
+      if (mine) sp.set('mine', mine);
+      navigate(`/tickets?${sp.toString()}`);
+    };
+    if (name === 'Open') return withMine({ status: 'OPEN,REOPENED' });
+    if (name === 'In Progress') return withMine({ status: 'IN_PROGRESS' });
+    if (name === 'Resolved') return withMine({ status: 'RESOLVED,CLOSED' });
+    if (name === 'Escalated') return withMine({ status: 'ESCALATED_L1,ESCALATED_L2,ADMIN_REVIEW' });
+    if (name === 'Overdue') return withMine({ status: 'OPEN,IN_PROGRESS,REOPENED', overdue: 1 });
     if (name === 'Assigned to Me') return navigate('/tickets?mine=assigned');
     return navigate('/tickets');
   };
@@ -165,7 +174,7 @@ export default function DashboardPage() {
                   <BarChart3 className="w-5 h-5 text-brand-600" />
                   Ticket Overview
                 </h3>
-                <p className="text-xs text-slate-500">Open, resolved, overdue & escalated ticket counts (click a bar to filter)</p>
+                <p className="text-xs text-slate-500">Open, in progress, resolved, overdue & escalated ticket counts (click a bar to filter)</p>
               </div>
               <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-medium">
                 Live

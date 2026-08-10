@@ -406,31 +406,60 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
         )
 
 
+def get_escalation_queue():
+    """Return the fixed escalation queue, creating it if missing.
+
+    There is exactly one escalation queue in the system; tickets are moved
+    into it by the engine. Never creates more than one.
+    """
+    queue = SupportQueue.objects.filter(is_escalation_queue=True).first()
+    if queue is not None:
+        return queue
+    queue, _ = SupportQueue.objects.get_or_create(
+        name="Escalation Queue",
+        defaults={
+            "description": "Fixed escalation queue; tickets land here after an SLA breach when auto-escalation is off.",
+            "is_escalation_queue": True,
+            "is_active": True,
+        },
+    )
+    if not queue.is_escalation_queue:
+        queue.is_escalation_queue = True
+        queue.save(update_fields=["is_escalation_queue"])
+    return queue
+
+
 def add_to_escalation_queue(ticket, policy=None, actor=None, now=None):
     from .audit import log
 
     now = now or timezone.now()
-    queue = SupportQueue.objects.filter(
-        is_escalation_queue=True, is_active=True
-    ).first()
-    if queue is None:
-        queue = SupportQueue.objects.filter(name__icontains="escalation").first()
+    queue = get_escalation_queue()
+
+    if ticket.queue_id == queue.id and ticket.assigned_to_id is None:
+        return queue
 
     ticket.queue = queue
+    ticket.assigned_to = None
     ticket.last_activity_at = now
     ticket.save()
 
     TicketAssignmentStage.objects.update(ticket=ticket, is_current=False)
     TicketAssignmentStage.objects.create(
         ticket=ticket, queue=queue, assigned_user=None,
-        is_current=True, notes="Added to escalation queue",
+        is_current=True, notes="Added to escalation queue (unassigned)",
     )
 
     log(
         ticket=ticket, action=EscalationHistory.Action.QUEUE_CHANGED,
         policy=policy, actor=actor,
-        message=f"Added to escalation queue '{queue.name}'" if queue else "Added to escalation queue (no queue configured)",
-        details={"queue": queue.name if queue else None},
+        message=f"Added to escalation queue '{queue.name}'",
+        details={"queue": queue.name},
+    )
+    log(
+        ticket=ticket, action=EscalationHistory.Action.ASSIGNMENT_CHANGED,
+        policy=policy, actor=actor,
+        message="Unassigned; awaiting assignment from the escalation queue",
+        details={"assignee": None},
     )
 
     methods = policy_methods(policy) if policy else [METHOD_IN_APP]

@@ -37,6 +37,7 @@ export default function TicketListPage() {
   const mineParam = searchParams.get('mine') || (isStaff ? 'assigned' : '');
   const statusParam = searchParams.get('status') || '';
   const priorityParam = searchParams.get('priority') || '';
+  const overdueParam = searchParams.get('overdue');
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(globalFilter.trim()), 300);
@@ -49,6 +50,7 @@ export default function TicketListPage() {
       const params = { page: targetPage, page_size: PAGE_SIZE, ordering };
       if (statusParam) params.status = statusParam;
       if (priorityParam) params.priority = priorityParam;
+      if (overdueParam) params.overdue = overdueParam;
       if (debouncedSearch) params.search = debouncedSearch;
       if (isSupportStaff && mineParam) params.mine = mineParam;
       const res = await ticketAPI.list(params);
@@ -58,7 +60,7 @@ export default function TicketListPage() {
     } catch {} finally {
       setLoading(false);
     }
-  }, [ordering, statusParam, priorityParam, debouncedSearch, isSupportStaff, mineParam]);
+  }, [ordering, statusParam, priorityParam, overdueParam, debouncedSearch, isSupportStaff, mineParam]);
 
   useEffect(() => {
     load(1);
@@ -317,9 +319,16 @@ export default function TicketListPage() {
                             t.status === 'RESOLVED' || t.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
                             'bg-rose-100 text-rose-800';
                           return (
-                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${color}`}>
-                              {t.status?.replace('_', ' ')}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${color}`}>
+                                {t.status?.replace('_', ' ')}
+                              </span>
+                              {t.sla_status === 'BREACHED' && (
+                                <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-600 text-white">
+                                  Breached
+                                </span>
+                              )}
+                            </div>
                           );
                         })()}
                       </td>

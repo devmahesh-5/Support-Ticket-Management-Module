@@ -24,6 +24,14 @@ const policySchema = z.object({
   escalation_delay_minutes: z.coerce.number().min(0),
   increase_priority_on_breach: z.boolean(),
   escalate_critical_immediately: z.boolean(),
+  notify_assigned_50: z.boolean(),
+  notify_assigned_75: z.boolean(),
+  notify_manager_50: z.boolean(),
+  notify_manager_75: z.boolean(),
+  notify_manager_90: z.boolean(),
+  notify_manager_100: z.boolean(),
+  notify_in_app: z.boolean(),
+  notify_email: z.boolean(),
 });
 
 const emptyDefaults = {
@@ -32,6 +40,14 @@ const emptyDefaults = {
   auto_escalate: false, escalation_delay_minutes: 60,
   increase_priority_on_breach: false,
   escalate_critical_immediately: false,
+  notify_assigned_50: true,
+  notify_assigned_75: true,
+  notify_manager_50: false,
+  notify_manager_75: true,
+  notify_manager_90: false,
+  notify_manager_100: false,
+  notify_in_app: true,
+  notify_email: false,
 };
 
 const DEFAULT_MAPPING = { LOW: "MEDIUM", MEDIUM: "HIGH", HIGH: "CRITICAL", CRITICAL: "CRITICAL" };
@@ -66,6 +82,14 @@ function toFormValues(p) {
     auto_escalate: p.auto_escalate, escalation_delay_minutes: p.escalation_delay_minutes,
     increase_priority_on_breach: p.increase_priority_on_breach,
     escalate_critical_immediately: p.escalate_critical_immediately,
+    notify_assigned_50: p.notify_assigned_50 ?? true,
+    notify_assigned_75: p.notify_assigned_75 ?? true,
+    notify_manager_50: p.notify_manager_50 ?? false,
+    notify_manager_75: p.notify_manager_75 ?? true,
+    notify_manager_90: p.notify_manager_90 ?? false,
+    notify_manager_100: p.notify_manager_100 ?? false,
+    notify_in_app: p.notify_in_app ?? true,
+    notify_email: p.notify_email ?? false,
   };
 }
 
@@ -155,6 +179,34 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
             counted as plain elapsed time from ticket creation. This policy does not define SLA hours - it only defines when and
             where to escalate on breach.
           </p>
+        </Section>
+
+        <Section title="Notifications & SLA Warnings">
+          <div className="space-y-3">
+            <div>
+              <h5 className="text-xs font-semibold text-slate-600 mb-1">Assignee SLA Warnings</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <ToggleRow label="Notify Assignee at 50% SLA" field="notify_assigned_50" form={form} />
+                <ToggleRow label="Notify Assignee at 75% SLA" field="notify_assigned_75" form={form} />
+              </div>
+            </div>
+            <div className="border-t border-slate-100 pt-2">
+              <h5 className="text-xs font-semibold text-slate-600 mb-1">Department HOD / Manager Warnings</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <ToggleRow label="Notify Manager/HOD at 50% SLA" field="notify_manager_50" form={form} />
+                <ToggleRow label="Notify Manager/HOD at 75% SLA" field="notify_manager_75" form={form} />
+                <ToggleRow label="Notify Manager/HOD at 90% SLA" field="notify_manager_90" form={form} />
+                <ToggleRow label="Notify Manager/HOD at 100% SLA (Breach)" field="notify_manager_100" form={form} />
+              </div>
+            </div>
+            <div className="border-t border-slate-100 pt-2">
+              <h5 className="text-xs font-semibold text-slate-600 mb-1">Delivery Channels</h5>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <ToggleRow label="In-App Notifications" field="notify_in_app" form={form} />
+                <ToggleRow label="Email Notifications" field="notify_email" form={form} />
+              </div>
+            </div>
+          </div>
         </Section>
 
         <Section title="Auto Escalation">

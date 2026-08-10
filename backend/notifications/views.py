@@ -1,6 +1,7 @@
 import json
 import time
 
+from django.db import close_old_connections
 from django.http import StreamingHttpResponse
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
@@ -42,14 +43,22 @@ def notification_stream(request):
         )
         try:
             while True:
+                # Never hold the DB connection during the idle sleep: release
+                # it at the top and bottom of each poll so a connected client
+                # only borrows a connection for the brief query. Otherwise a
+                # long-lived EventSource keeps one slot open forever and the
+                # reconnect watchdog can exhaust max_connections.
+                close_old_connections()
                 new = Notification.objects.filter(user=user, id__gt=last_id).order_by("id")
                 for notif in new.iterator(chunk_size=20):
                     payload = NotificationSerializer(notif).data
                     yield f"data: {json.dumps(payload)}\n\n"
                     last_id = notif.id
+                close_old_connections()
                 yield 'data: {"id":0,"type":"heartbeat"}\n\n'
                 time.sleep(4)
         except GeneratorExit:
+            close_old_connections()
             return
 
     return StreamingHttpResponse(event_stream(), content_type="text/event-stream")

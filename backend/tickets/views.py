@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
-from django_filters.rest_framework import FilterSet, DateFromToRangeFilter
+from django_filters.rest_framework import FilterSet, DateFromToRangeFilter, CharFilter, BooleanFilter
 from django.db.models import Q, Count, Prefetch, F, Avg, Min
 from django.db.models.functions import TruncWeek
 from django.utils import timezone
@@ -25,10 +25,26 @@ from notifications.services import METHOD_EMAIL, METHOD_IN_APP, notify_user
 
 class TicketFilter(FilterSet):
     created_at = DateFromToRangeFilter()
+    status = CharFilter(method="filter_status")
+    overdue = BooleanFilter(method="filter_overdue")
+
+    def filter_status(self, qs, name, value):
+        values = [v.strip() for v in value.split(",") if v.strip()]
+        if values:
+            return qs.filter(status__in=values)
+        return qs
+
+    def filter_overdue(self, qs, name, value):
+        if value:
+            return qs.filter(
+                sla_deadline__lt=timezone.now(),
+                status__in=["OPEN", "IN_PROGRESS", "REOPENED"],
+            )
+        return qs
 
     class Meta:
         model = Ticket
-        fields = ["status", "priority", "category", "department", "is_class_level"]
+        fields = ["priority", "category", "department", "is_class_level"]
 
 
 class IsStaffOrAdmin(permissions.BasePermission):
@@ -368,6 +384,8 @@ class TicketViewSet(viewsets.ModelViewSet):
 
         old_assignee = ticket.assigned_to
         ticket.assigned_to = new_assignee
+        ticket.queue = None
+        ticket.escalation_level = escalation_level_for_assignee(new_assignee)
         ticket.last_activity_at = timezone.now()
         ticket.save()
 
@@ -520,7 +538,8 @@ class TicketViewSet(viewsets.ModelViewSet):
             elif mine == "created":
                 qs = qs.filter(created_by=user)
 
-        open_count = qs.filter(status__in=["OPEN", "IN_PROGRESS", "REOPENED"]).count()
+        open_count = qs.filter(status__in=["OPEN", "REOPENED"]).count()
+        in_progress_count = qs.filter(status="IN_PROGRESS").count()
         closed_count = qs.filter(status__in=["RESOLVED", "CLOSED"]).count()
         escalated_count = qs.filter(
             status__in=["ESCALATED_L1", "ESCALATED_L2", "ADMIN_REVIEW"]
@@ -574,6 +593,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
         return Response({
             "open": open_count,
+            "in_progress": in_progress_count,
             "closed": closed_count,
             "escalated": escalated_count,
             "my_tickets": my_tickets,
@@ -598,15 +618,49 @@ class TicketViewSet(viewsets.ModelViewSet):
 
     def _staff_metrics(self, qs):
         user = self.request.user
-        staff_qs = User.objects.filter(role=User.Role.STAFF)
+        request = self.request
+
+        # Staff + HODs (DEPT_ADMIN). A DEPT_ADMIN (HOD) always sees only their
+        # own department's roster; a campus admin can filter freely.
+        staff_qs = User.objects.filter(
+            role__in=[User.Role.STAFF, User.Role.DEPT_ADMIN]
+        )
         if user.role == User.Role.DEPT_ADMIN:
             staff_qs = staff_qs.filter(department=user.department)
+
+        filters = {
+            "staff_department": "department",
+            "staff_type": "staff_type",
+            "staff_level": "level",
+            "staff_role": "role",
+        }
+        aliases = {"HOD": User.Role.DEPT_ADMIN}
+        applied = {}
+        for param, field in filters.items():
+            value = request.query_params.get(param)
+            if value:
+                staff_qs = staff_qs.filter(**{field: aliases.get(value.upper(), value)})
+                applied[param] = value
+
+        staff_qs = staff_qs.order_by("department", "role", "level", "username")
 
         metrics = []
         for staff in staff_qs:
             sqs = qs.filter(assigned_to=staff)
-            handled = sqs.count()
+            assigned = sqs.count()
+            resolved = sqs.filter(status__in=["RESOLVED", "CLOSED"]).count()
             open_count = sqs.filter(status__in=ACTIVE_STATUSES).count()
+            overdue = sqs.filter(
+                sla_deadline__lt=timezone.now(),
+                status__in=["OPEN", "IN_PROGRESS", "REOPENED"],
+            ).count()
+            breached = sqs.filter(
+                Q(sla_status="BREACHED")
+                | Q(
+                    sla_deadline__lt=timezone.now(),
+                    status__in=["OPEN", "IN_PROGRESS", "REOPENED"],
+                )
+            ).count()
 
             avg_resp = None
             resps = sqs.filter(
@@ -619,13 +673,30 @@ class TicketViewSet(viewsets.ModelViewSet):
                 avg_resp = round(secs / len(resps) / 3600, 1)
 
             metrics.append({
+                "id": staff.id,
                 "name": staff.get_full_name() or staff.username,
+                "username": staff.username,
+                "role": staff.role,
                 "department": staff.department,
-                "tickets_handled": handled,
+                "staff_type": staff.staff_type,
+                "level": staff.level,
+                "tickets_assigned": assigned,
+                "resolved": resolved,
                 "open_tickets": open_count,
+                "overdue": overdue,
+                "sla_breached": breached,
                 "avg_response_hours": avg_resp,
             })
-        return metrics
+
+        summary = {
+            "staff_count": len(metrics),
+            "assigned": sum(m["tickets_assigned"] for m in metrics),
+            "resolved": sum(m["resolved"] for m in metrics),
+            "open": sum(m["open_tickets"] for m in metrics),
+            "overdue": sum(m["overdue"] for m in metrics),
+            "sla_breached": sum(m["sla_breached"] for m in metrics),
+        }
+        return metrics, summary, applied
 
     @action(detail=False, methods=["get"])
     def report(self, request):
@@ -658,7 +729,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         ).values("week").annotate(n=Count("id")).order_by("week")
         weekly = [{"week": str(w["week"].date()), "tickets": w["n"]} for w in weekly]
 
-        return Response({
+        data = {
             "total": qs.count(),
             "by_status": by_status,
             "by_priority": by_priority,
@@ -668,10 +739,14 @@ class TicketViewSet(viewsets.ModelViewSet):
             "avg_resolution_hours": avg_resolution_hours,
             "missed_deadline_pct": missed_deadline_pct,
             "weekly_trend": weekly,
-            "staff_metrics": self._staff_metrics(qs),
             "start": request.query_params.get("start"),
             "end": request.query_params.get("end"),
-        })
+        }
+        staff_metrics, staff_summary, staff_filters = self._staff_metrics(qs)
+        data["staff_metrics"] = staff_metrics
+        data["staff_summary"] = staff_summary
+        data["staff_filters_applied"] = staff_filters
+        return Response(data)
 
     @action(detail=False, methods=["get"])
     def export(self, request):
