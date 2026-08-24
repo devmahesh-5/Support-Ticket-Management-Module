@@ -24,7 +24,7 @@ class Ticket(models.Model):
     ticket_id = models.CharField(max_length=20, unique=True, editable=False)
     title = models.CharField(max_length=200)
     description = models.TextField()
-    category = models.CharField(max_length=100, blank=True, null=True, help_text="Hardcoded category name (see tickets.categories)")
+    category = models.CharField(max_length=100, blank=True, null=True, help_text="Dynamic category name (decides SLA hours only)")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
 
@@ -36,7 +36,12 @@ class Ticket(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name="assigned_tickets"
     )
-    department = models.CharField(max_length=3, blank=True, null=True)
+    department = models.CharField(max_length=10, blank=True, null=True)
+    sub_department = models.ForeignKey(
+        "accounts.SubDepartment", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="tickets",
+        help_text="Team/sub-department handling this ticket (resolved from the category route)",
+    )
 
     is_class_level = models.BooleanField(default=False)
     class_section = models.CharField(max_length=10, blank=True, null=True)
@@ -130,23 +135,45 @@ class Attachment(models.Model):
         return self.filename
 
 
-class CategorySla(models.Model):
-    """Admin-configurable SLA target hours per hardcoded category name.
+class TicketCategory(models.Model):
+    """Admin-managed ticket category.
 
-    Categories themselves are fixed constants (tickets.categories); this model
-    only stores the admin-edited response/resolution hour overrides.
+    Categories carry NO routing information - they only decide the SLA
+    clock (response/resolution hours). Routing is driven purely by the
+    ticket's department + sub-department.
     """
 
-    category = models.CharField(max_length=100, unique=True, help_text="Hardcoded category name (see tickets.categories)")
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
     sla_response_hours = models.IntegerField(default=24, help_text="Target response time in hours")
     sla_resolution_hours = models.IntegerField(default=72, help_text="Target resolution time in hours")
+    is_active = models.BooleanField(default=True)
 
     class Meta:
-        verbose_name = "Category SLA"
-        verbose_name_plural = "Category SLAs"
+        verbose_name = "Category"
+        verbose_name_plural = "Categories"
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.category} ({self.sla_response_hours}h / {self.sla_resolution_hours}h)"
+        return self.name
+
+
+def get_category_sla(name):
+    """Effective SLA hours for a category name.
+
+    Returns (sla_response_hours, sla_resolution_hours). Falls back to the
+    24h/72h defaults when the category is unknown/inactive.
+    """
+    defaults = (24, 72)
+    if not name:
+        return defaults
+    row = TicketCategory.objects.filter(name=name).first()
+    if row is None:
+        return defaults
+    return (
+        row.sla_response_hours or defaults[0],
+        row.sla_resolution_hours or defaults[1],
+    )
 
 
 class SystemSetting(models.Model):

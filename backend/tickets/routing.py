@@ -1,9 +1,10 @@
 from datetime import timedelta
+
 from django.db.models import Count, Q
 from django.utils import timezone
+
 from accounts.models import User
-from .models import Ticket
-from .categories import get_category_route, get_category_sla
+from .models import Ticket, get_category_sla
 
 
 MAX_ACTIVE_TICKETS = 5
@@ -30,58 +31,33 @@ def least_loaded_staff(filters):
 
 
 def assign_ticket(ticket):
-    if not ticket.department and not ticket.category:
+    """Route a freshly created ticket to the responsible TEAM LEAD.
+
+    Routing is driven purely by the ticket's department + sub-department:
+    the sub-department's lead receives the ticket and assigns it to one of
+    their staff. Fallbacks: department HOD -> campus admin. The category is
+    never consulted for routing (it only defines the SLA clock).
+    """
+    if not ticket.department and not ticket.sub_department_id:
         ticket.assigned_to = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
         ticket.save()
         return
 
-    route = get_category_route(ticket.category)
+    assigned = None
+    team = ticket.sub_department
+    if team:
+        lead = team.lead
+        if lead and lead.is_active and lead.is_available:
+            assigned = lead
 
-    if route and route["target_dept"] == "HOD":
-        ticket.assigned_to = User.objects.filter(
+    if assigned is None:
+        # No team / no lead configured: go to the department HOD, else the
+        # campus admin.
+        assigned = User.objects.filter(
             role=User.Role.DEPT_ADMIN, department=ticket.department,
         ).first()
-        if not ticket.assigned_to:
-            ticket.assigned_to = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
-        ticket.sla_deadline = timezone.now() + timedelta(hours=24)
-        ticket.save()
-        return
-
-    target_dept = ticket.department
-    target_staff_type = None
-
-    if route:
-        if route["target_dept"]:
-            target_dept = route["target_dept"]
-        target_staff_type = route["staff_type"]
-
-    if not target_dept:
-        ticket.assigned_to = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
-        ticket.save()
-        return
-
-    filters = {
-        "role": User.Role.STAFF,
-        "department": target_dept,
-        "level": 1,
-        "is_available": True,
-    }
-    if target_staff_type:
-        filters["staff_type"] = target_staff_type
-
-    assigned = least_loaded_staff(filters)
-
-    if not assigned:
-        filters.pop("level", None)
-        assigned = least_loaded_staff(filters)
-
-    if not assigned:
-        assigned = User.objects.filter(
-            role=User.Role.DEPT_ADMIN, department=target_dept,
-        ).first()
-
-    if not assigned:
-        assigned = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
+        if not assigned:
+            assigned = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
 
     ticket.assigned_to = assigned
 

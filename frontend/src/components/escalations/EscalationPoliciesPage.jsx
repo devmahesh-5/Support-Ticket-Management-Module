@@ -1,23 +1,45 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from "@tanstack/react-table";
-import { Plus, Pencil, Trash2, ShieldAlert, BellRing } from "lucide-react";
-import { escalationAPI } from "../../api/client";
+import { Plus, Pencil, Trash2, ShieldAlert, BellRing, Settings } from "lucide-react";
+import { escalationAPI, systemSettingAPI, departmentAPI } from "../../api/client";
+import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { PRIORITIES, DEPARTMENTS } from "./constants";
+import { PRIORITIES } from "./constants";
 import PolicyEditor from "./PolicyEditor";
 import NotificationTypesTab from "./NotificationTypesTab";
 
 export default function EscalationPoliciesPage() {
+  const { user } = useAuth();
   const [policies, setPolicies] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tab, setTab] = useState("policies");
+  const [allowTwoWay, setAllowTwoWay] = useState(true);
+  const [departments, setDepartments] = useState([]);
+
+  const isCampusAdmin = user?.role === "CAMPUS_ADMIN";
 
   const load = () => escalationAPI.policies.list().then((res) => setPolicies(res.data.results || res.data || [])).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    departmentAPI.list().then((res) => setDepartments(res.data.results || res.data || [])).catch(() => {});
+    systemSettingAPI.get()
+      .then((res) => setAllowTwoWay(res.data.allow_two_way_escalation))
+      .catch(() => {});
+  }, []);
+
+  const handleToggleTwoWay = async (e) => {
+    const val = e.target.checked;
+    setAllowTwoWay(val);
+    try {
+      await systemSettingAPI.update({ allow_two_way_escalation: val });
+    } catch {
+      setAllowTwoWay(!val);
+    }
+  };
 
   const remove = async (id) => {
     if (!window.confirm("Delete this policy?")) return;
@@ -25,7 +47,7 @@ export default function EscalationPoliciesPage() {
     load();
   };
 
-  const deptLabel = (v) => (v ? DEPARTMENTS.find((d) => d.value === v)?.label || v : "Any");
+  const deptLabel = (v) => (v ? departments.find((d) => d.code === v)?.name || v : "Any");
   const prioLabel = (v) => (v ? PRIORITIES.find((p) => p.value === v)?.label || v : "Any");
 
   const columns = useMemo(() => [
@@ -41,7 +63,10 @@ export default function EscalationPoliciesPage() {
     { id: "levels", header: "Escalation", cell: (c) => {
         const from = c.row.original.from_level;
         const to = c.row.original.to_level;
-        return to ? <Badge variant="info">{from ? `L${from} → L${to}` : `Any → L${to}`}</Badge> : <Badge variant="outline">Next level</Badge>;
+        const fmt = (v) => (v === 0 ? "L0" : v ? `L${v}` : null);
+        return to !== null && to !== undefined
+          ? <Badge variant="info">{from !== null && from !== undefined ? `${fmt(from)} → L${to}` : `Any → L${to}`}</Badge>
+          : <Badge variant="outline">Next level</Badge>;
       } },
     { accessorKey: "auto_escalate", header: "Auto", cell: (c) => c.getValue() ? <Badge variant="warning">Escalates</Badge> : <Badge variant="outline">Off</Badge> },
     { accessorKey: "is_enabled", header: "Status", cell: (c) => c.getValue() ? <Badge variant="success">Enabled</Badge> : <Badge variant="info">Disabled</Badge> },
@@ -90,8 +115,39 @@ export default function EscalationPoliciesPage() {
 
       {tab === "types" && <NotificationTypesTab />}
 
-      {tab === "policies" && <Card>
-        <CardHeader><CardTitle>Policies ({policies.length})</CardTitle></CardHeader>
+      {tab === "policies" && (
+        <>
+          {/* Direction control (moved from Admin > Escalation Policy) */}
+          <div className="custom-card p-4 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Settings className="w-4 h-4 text-brand-600" />
+                Escalation Policy &amp; Direction Control
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Configure whether tickets can be de-escalated back to lower management levels
+                {isCampusAdmin ? "" : " (only the Campus Admin can change this)"}
+              </p>
+            </div>
+            {isCampusAdmin ? (
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={allowTwoWay}
+                  onChange={handleToggleTwoWay}
+                />
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+              </label>
+            ) : (
+              <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-bold ${allowTwoWay ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                {allowTwoWay ? "De-escalation ON" : "De-escalation OFF"}
+              </span>
+            )}
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle>Policies ({policies.length})</CardTitle></CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
@@ -107,7 +163,9 @@ export default function EscalationPoliciesPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>}
+          </Card>
+        </>
+      )}
 
       <PolicyEditor open={open} onClose={() => setOpen(false)} onSaved={load} editing={editing} />
     </div>

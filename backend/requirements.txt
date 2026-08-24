@@ -7,3 +7,5 @@ Pillow==10.4
 gunicorn==22.0
 python-dotenv==1.0
 openpyxl==3.1
+APScheduler~=3.11
+django-apscheduler~=0.7

@@ -13,9 +13,10 @@ class TimeStampedModel(models.Model):
 
 
 SUPPORT_LEVEL_CHOICES = [
-    (1, "Level 1 (Staff)"),
-    (2, "Level 2 (Staff)"),
-    (3, "Level 3 (Department HOD)"),
+    (0, "Level 0 (Staff)"),
+    (1, "Level 1 (Team Lead)"),
+    (2, "Level 2 (Department HOD)"),
+    (3, "Level 3 (Campus Admin)"),
 ]
 
 
@@ -29,7 +30,7 @@ class SupportQueue(TimeStampedModel):
 
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
-    department = models.CharField(max_length=3, blank=True, null=True)
+    department = models.CharField(max_length=10, blank=True, null=True)
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="queues"
     )
@@ -62,7 +63,7 @@ class EscalationPolicy(TimeStampedModel):
     name = models.CharField(max_length=120, unique=True)
     description = models.TextField(blank=True)
     is_enabled = models.BooleanField(default=True)
-    department = models.CharField(max_length=3, blank=True, null=True, help_text="Restrict policy to a department (blank = all tickets)")
+    department = models.CharField(max_length=10, blank=True, null=True, help_text="Restrict policy to a department code (blank = all tickets)")
     category = models.CharField(
         max_length=100, blank=True, null=True,
         help_text="Restrict policy to a hardcoded category name (blank = all tickets)",
@@ -116,9 +117,12 @@ class EscalationPolicy(TimeStampedModel):
         ordering = ["name"]
 
     def clean(self):
-        if self.from_level and self.to_level and self.from_level > self.to_level:
+        if (
+            self.from_level is not None and self.to_level is not None
+            and self.from_level >= self.to_level
+        ):
             from django.core.exceptions import ValidationError
-            raise ValidationError("From level cannot be higher than the To level.")
+            raise ValidationError("From level must be lower than the To level.")
 
     def __str__(self):
         return self.name

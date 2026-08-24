@@ -1,7 +1,8 @@
 """Assignment actions executed by the escalation engine.
 
-Reuses the existing least-loaded staff routing from tickets.routing so the
-policy engine stays consistent with the rest of the system.
+Escalation ladder: Level 0 = staff, Level 1 = team lead, Level 2 = department
+HOD, Level 3 = campus admin. ``ticket.escalation_level`` stores the current
+handler's hierarchy level directly (0 while owned by a staff member).
 """
 
 from django.utils import timezone
@@ -19,31 +20,36 @@ ESCALATED_STATUSES = [
     Ticket.Status.ADMIN_REVIEW,
 ]
 
+STAFF_LEVEL = 0
+TEAM_LEAD_LEVEL = 1
+HOD_LEVEL = 2
 MAX_LEVEL = 3
-CAMPUS_ADMIN_LEVEL = 4  # sentinel staff level: the campus admin (Admin Review)
+CAMPUS_ADMIN_LEVEL = MAX_LEVEL  # top of the chain (Admin Review)
 
 
 def escalation_level_for_assignee(assignee):
     """Map an assigned user onto the ticket escalation_level chain.
 
-    escalation_level is the chain position (0 = L1 staff, 1 = L2 staff,
-    2 = department HOD, 3 = campus admin). Explicitly-assigned tickets keep
-    the chain position of their assignee so later escalation hops correctly
-    from L2 -> HOD -> admin instead of re-starting at L1.
+    escalation_level equals the assignee's hierarchy level: 0 = staff,
+    1 = team lead, 2 = department HOD, 3 = campus admin. Explicitly-assigned
+    tickets keep the chain position of their assignee so later hops move
+    correctly up/down the ladder.
     """
     if not assignee:
-        return 0
+        return STAFF_LEVEL
     if assignee.role == User.Role.CAMPUS_ADMIN:
         return MAX_LEVEL
     if assignee.role == User.Role.DEPT_ADMIN:
-        return 2
+        return HOD_LEVEL
+    if assignee.role == User.Role.TEAM_LEAD:
+        return TEAM_LEAD_LEVEL
     if assignee.role == User.Role.STAFF:
-        return max(int(assignee.level or 1) - 1, 0)
-    return 0
+        return max(int(assignee.level or 0), STAFF_LEVEL)
+    return STAFF_LEVEL
 
 
 def status_for_level(level):
-    """Map a staff escalation level onto existing ticket statuses."""
+    """Map an escalation chain position onto existing ticket statuses."""
     if level <= 0:
         return Ticket.Status.IN_PROGRESS
     if level == 1:
@@ -54,50 +60,52 @@ def status_for_level(level):
 
 
 def next_support_level(ticket, preferred=None, policy=None):
-    """Resolve the target staff level for the assignee (1-4, User.level).
+    """Resolve the target handler level (0-3) for an escalation hop.
 
-    Levels 1-2 are L1/L2 staff, 3 is the department HOD and 4 (the
-    ``CAMPUS_ADMIN_LEVEL`` sentinel) is the campus admin. An explicit
-    preferred level wins. Otherwise the matching policy's ``to_level`` drives
-    the hop, falling back to one staff level up. Never returns the current
-    staff level.
+    An explicit preferred level wins. Otherwise the matching policy's
+    ``to_level`` drives the hop, falling back to one level up. Never returns
+    the current level or below, and never exceeds ``CAMPUS_ADMIN_LEVEL``.
     """
-    current_staff = (ticket.escalation_level or 0) + 1
-    if preferred:
-        return min(int(preferred), CAMPUS_ADMIN_LEVEL)
-    if policy and policy.to_level:
+    current = ticket.escalation_level or 0
+    if preferred is not None:
+        target = int(preferred)
+    elif policy is not None and policy.to_level is not None:
         target = int(policy.to_level)
     else:
-        target = current_staff + 1
-    if target <= current_staff:
-        target = current_staff + 1
+        target = current + 1
+    if target <= current:
+        target = current + 1
     return min(target, CAMPUS_ADMIN_LEVEL)
 
 
 def resolve_assignee(level=None, queue=None, department=None, user=None, ticket=None):
-    """Pick an assignee user from a staff level, queue, department or explicit user.
+    """Pick an assignee user from a handler level, queue, department or explicit user.
 
-    Staff levels map onto User.level:
-      - Level 1 and 2 -> least-loaded available staff whose User.level matches.
-      - Level 3       -> the department HOD (DEPT_ADMIN).
-      - Level 4       -> the campus admin (top of the chain, Admin Review).
+    Handler levels map onto roles/teams:
+      - Level 0       -> least-loaded member of the ticket's team.
+      - Level 1       -> the team lead of the ticket's team.
+      - Level 2       -> the department HOD (DEPT_ADMIN).
+      - Level 3       -> the campus admin (top of the chain, Admin Review).
     """
     if user:
         return user
-    if level:
+    if level is not None:
         level = int(level)
+        assignee = None
         if level >= CAMPUS_ADMIN_LEVEL:
-            return User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
-        if level >= 3:
-            hod = _department_hod(ticket)
-            if hod:
-                return hod
-        staff = _level_staff(level, ticket)
-        if staff:
-            return staff
-        hod = _department_hod(ticket)
-        if hod:
-            return hod
+            assignee = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
+        elif level >= HOD_LEVEL:
+            assignee = _department_hod(ticket)
+        elif level >= TEAM_LEAD_LEVEL:
+            assignee = _team_lead(ticket)
+            if assignee is None:
+                assignee = _department_hod(ticket)
+        else:
+            assignee = _team_member(ticket)
+            if assignee is None:
+                assignee = _team_lead(ticket)
+        if assignee:
+            return assignee
     if queue:
         member = queue.members.filter(is_available=True).first()
         if member:
@@ -117,30 +125,26 @@ def resolve_assignee(level=None, queue=None, department=None, user=None, ticket=
             return dept_admin
     dept = _target_department(ticket)
     if dept:
-        return User.objects.filter(
+        hod = User.objects.filter(
             role=User.Role.DEPT_ADMIN, department=dept
         ).first()
+        if hod:
+            return hod
     return User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
 
 
-def _category_route(ticket):
-    """The routing target for the ticket's category (same rule as routing)."""
-    from tickets.routing import get_category_route
-    if not ticket or not ticket.category:
-        return None
-    return get_category_route(ticket.category)
-
-
 def _target_department(ticket):
-    """The department actually handling the ticket: the category's routed
-    department when one is set (e.g. Network -> CIT), else the ticket's own
-    department."""
-    route = _category_route(ticket)
-    if route and route.get("target_dept") and route["target_dept"] != "HOD":
-        return route["target_dept"]
-    if ticket:
-        return ticket.department
-    return None
+    """The department handling the ticket (set explicitly at creation)."""
+    if ticket is None:
+        return None
+    return ticket.department
+
+
+def _handling_team(ticket):
+    """The team (sub-department) stamped on the ticket at creation."""
+    if ticket is None:
+        return None
+    return ticket.sub_department
 
 
 def _department_hod(ticket):
@@ -156,34 +160,30 @@ def _department_hod(ticket):
     return User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
 
 
-def _category_staff_type(ticket):
-    """The staff specialty implied by the ticket's category (same rule as routing)."""
-    route = _category_route(ticket)
-    return route.get("staff_type") if route else None
-
-
-def _level_staff(level, ticket):
-    """Least-loaded available STAFF at the target level who also matches the
-    ticket's category staff type, scoped to the routed department. Returns
-    None so resolve_assignee can fall back to the HOD when no suitable
-    upper-level staff exists."""
-    route = _category_route(ticket)
-    if route and route.get("target_dept") == "HOD":
-        # Categories that route to the department HOD (e.g. General / Other)
-        # have no staff chain - escalate straight to the HOD.
+def _team_lead(ticket):
+    """The team lead of the ticket's handling team. Returns None when there is
+    no team, no lead or the lead is inactive/unavailable so callers can fall
+    through to the HOD."""
+    team = _handling_team(ticket)
+    if team is None:
         return None
-    filters = {
+    lead = team.lead
+    if lead and lead.is_active and lead.is_available:
+        return lead
+    return None
+
+
+def _team_member(ticket):
+    """Least-loaded available member of the ticket's team (used when handing
+    a ticket down to staff, e.g. on de-escalation)."""
+    team = _handling_team(ticket)
+    if team is None:
+        return None
+    return least_loaded_staff({
         "role": User.Role.STAFF,
-        "level": level,
+        "sub_department": team,
         "is_available": True,
-    }
-    dept = _target_department(ticket)
-    if dept:
-        filters["department"] = dept
-    staff_type = _category_staff_type(ticket)
-    if staff_type:
-        filters["staff_type"] = staff_type
-    return least_loaded_staff(filters)
+    })
 
 
 def escalate_ticket(ticket, policy=None, level=None, queue=None, user=None, department=None,
@@ -207,7 +207,7 @@ def escalate_ticket(ticket, policy=None, level=None, queue=None, user=None, depa
 
     previous_level = ticket.escalation_level or 0
     previous_assignee = ticket.assigned_to
-    ticket.escalation_level = min(max(level - 1, previous_level + 1), MAX_LEVEL)
+    ticket.escalation_level = min(max(level, previous_level + 1), MAX_LEVEL)
     if queue:
         ticket.queue = queue
     if assignee:
@@ -263,24 +263,21 @@ def escalate_ticket(ticket, policy=None, level=None, queue=None, user=None, depa
 def _deescalation_target(ticket, policy=None):
     """Reverse of the escalation policy: the escalation level a ticket returns to.
 
-    For a ticket currently at escalation level N (assigned staff level N+1),
-    find the enabled policy that escalated INTO that staff level
-    (``to_level == N+1``); de-escalating returns it to that policy's
-    ``from_level`` staff, i.e. escalation level ``from_level - 1`` (an
-    L1 -> L2 policy reverses to L2 -> L1, level 1 -> 0). Falls back to one
-    level down when no policy governs the current level.
+    For a ticket currently handled at escalation level N, find the enabled
+    policy that escalates INTO that level (``to_level == N``); de-escalating
+    returns it to that policy's ``from_level``. Falls back to one level down
+    when no policy governs the current level.
     """
     current = ticket.escalation_level or 0
-    if current <= 1:
+    if current <= 0:
         return 0
 
-    current_staff = current + 1
     policies = []
-    if policy and policy.to_level == current_staff:
+    if policy is not None and policy.to_level == current:
         policies.append(policy)
-    policies.extend(EscalationPolicy.objects.filter(is_enabled=True, to_level=current_staff))
+    policies.extend(EscalationPolicy.objects.filter(is_enabled=True, to_level=current))
 
-    target_staff = current_staff - 1
+    target_level = current - 1
     for p in policies:
         if p.department and p.department != ticket.department:
             continue
@@ -288,10 +285,10 @@ def _deescalation_target(ticket, policy=None):
             continue
         if p.priority and p.priority != ticket.priority:
             continue
-        if p.from_level:
-            target_staff = p.from_level
+        if p.from_level is not None:
+            target_level = min(p.from_level, current - 1)
         break
-    return max(0, target_staff - 1)
+    return max(0, target_level)
 
 
 def deescalate_ticket(ticket, policy=None, level=None, actor=None, note="", now=None):
@@ -312,12 +309,11 @@ def deescalate_ticket(ticket, policy=None, level=None, actor=None, note="", now=
     if target_level >= current:
         return None
 
-    target_staff = target_level + 1
     if target_level == 0:
-        assignee = resolve_assignee(level=target_staff, ticket=ticket)
+        assignee = resolve_assignee(level=target_level, ticket=ticket)
         ticket.status = Ticket.Status.IN_PROGRESS
     else:
-        assignee = resolve_assignee(level=target_staff, ticket=ticket)
+        assignee = resolve_assignee(level=target_level, ticket=ticket)
         ticket.status = status_for_level(target_level)
 
     previous_level = current
@@ -329,7 +325,7 @@ def deescalate_ticket(ticket, policy=None, level=None, actor=None, note="", now=
 
     TicketAssignmentStage.objects.update(ticket=ticket, is_current=False)
     TicketAssignmentStage.objects.create(
-        ticket=ticket, level=target_staff, queue=ticket.queue,
+        ticket=ticket, level=target_level, queue=ticket.queue,
         assigned_user=assignee, is_current=True, notes=note,
     )
 

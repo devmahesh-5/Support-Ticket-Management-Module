@@ -152,7 +152,7 @@ export default function EscalationDashboardPage() {
   const load = () => {
     escalationAPI.dashboard.get().then((res) => setData(res.data)).catch(() => {});
     userAPI.list()
-      .then((res) => setStaff((res.data.results || res.data || []).filter((u) => ["STAFF", "DEPT_ADMIN", "CAMPUS_ADMIN"].includes(u.role))))
+      .then((res) => setStaff((res.data.results || res.data || []).filter((u) => ["STAFF", "TEAM_LEAD", "DEPT_ADMIN", "CAMPUS_ADMIN"].includes(u.role))))
       .catch(() => {});
   };
   useEffect(load, []);

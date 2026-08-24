@@ -4,7 +4,8 @@ import {
   ArrowRight,
   BarChart3,
   PieChart as PieChartIcon,
-  Flame
+  Flame,
+  UserX
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,16 +13,20 @@ import {
 } from 'recharts';
 import { ticketAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { STATUS_LABELS } from './escalations/constants';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Team leads start with their full scope so the team backlog is visible;
+  // staff default to their own assigned queue.
   const [mine, setMine] = useState(user?.role === 'STAFF' ? 'assigned' : '');
 
-  const isStaff = ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
-  const isAdmin = isStaff && user?.role !== 'STAFF';
+  const isStaff = ['STAFF', 'TEAM_LEAD', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
+  const isAdmin = ['DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
+  const canSeeUnassigned = ['TEAM_LEAD', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
   const isStudent = !isStaff;
 
   const load = (targetMine) => {
@@ -55,6 +60,8 @@ export default function DashboardPage() {
   const escalatedCount = stats?.escalated || 0;
   const myTicketsCount = stats?.my_tickets || 0;
   const overdueCount = stats?.overdue || 0;
+  const unassignedCount = stats?.unassigned || 0;
+  const unassignedList = stats?.unassigned_list || [];
 
   // Real timeline dataset from backend
   const timelineData = (stats?.timeline && stats.timeline.length > 0)
@@ -86,13 +93,14 @@ export default function DashboardPage() {
     navigate(`/tickets?priority=${priorityKey}`);
   };
 
-  // Real overview bar chart dataset (open / in progress / resolved / overdue / escalated / assigned)
+  // Real overview bar chart dataset (open / in progress / resolved / overdue / escalated / unassigned)
   const overviewData = [
     { name: 'Open', value: openCount, color: '#0070c7' },
     { name: 'In Progress', value: inProgressCount, color: '#f59e0b' },
     { name: 'Resolved', value: closedCount, color: '#10b981' },
     { name: 'Overdue', value: overdueCount, color: '#ef4444' },
     { name: 'Escalated', value: escalatedCount, color: '#8b5cf6' },
+    { name: 'Unassigned', value: unassignedCount, color: '#f43f5e' },
     { name: 'Assigned to Me', value: myTicketsCount, color: '#06b6d4' },
   ];
 
@@ -107,14 +115,24 @@ export default function DashboardPage() {
     if (name === 'Resolved') return withMine({ status: 'RESOLVED,CLOSED' });
     if (name === 'Escalated') return withMine({ status: 'ESCALATED_L1,ESCALATED_L2,ADMIN_REVIEW' });
     if (name === 'Overdue') return withMine({ status: 'OPEN,IN_PROGRESS,REOPENED', overdue: 1 });
+    if (name === 'Unassigned') return navigate('/tickets?mine=unassigned');
     if (name === 'Assigned to Me') return navigate('/tickets?mine=assigned');
     return navigate('/tickets');
   };
 
+  const unassignedScopeLabel =
+    user?.role === 'CAMPUS_ADMIN'
+      ? 'Campus-wide, grouped by department'
+      : user?.role === 'DEPT_ADMIN'
+        ? `Teams in ${user.department || 'your department'}`
+        : user?.role === 'TEAM_LEAD'
+          ? 'Your team(s)'
+          : '';
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-brand-900 via-brand-800 to-slate-900 p-6 rounded-2xl text-white shadow-lg">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 text-black">
         <div>
 
           <h1 className="text-2xl font-bold tracking-tight">
@@ -130,7 +148,7 @@ export default function DashboardPage() {
                 <button
                   onClick={() => setMine('')}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${mine === ''
-                    ? 'bg-white text-brand-800 shadow-sm'
+                    ? 'bg-blue-500 text-white shadow-sm'
                     : 'text-brand-200 hover:text-white'
                     }`}
                 >
@@ -145,8 +163,8 @@ export default function DashboardPage() {
                   key={tab.value}
                   onClick={() => setMine(tab.value)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${mine === tab.value
-                    ? 'bg-white text-brand-800 shadow-sm'
-                    : 'text-brand-200 hover:text-white'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'text-brand-200 hover:text-gray bg-blue-300 hover:bg-blue-100/30' 
                     }`}
                 >
                   {tab.label}
@@ -154,12 +172,7 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-          <Link
-            to="/tickets/new"
-            className="px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-400 text-white font-medium text-xs shadow-md transition-all flex items-center gap-2"
-          >
-            <span>+ Create Ticket</span>
-          </Link>
+        
         </div>
       </div>
 
@@ -176,9 +189,7 @@ export default function DashboardPage() {
                 </h3>
                 <p className="text-xs text-slate-500">Open, in progress, resolved, overdue & escalated ticket counts (click a bar to filter)</p>
               </div>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-medium">
-                Live
-              </span>
+              
             </div>
 
             <div className="h-64 w-full">
@@ -214,6 +225,7 @@ export default function DashboardPage() {
               <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 font-medium">
                 Last 7 Days
               </span>
+              
             </div>
 
             <div className="h-72 w-full">
@@ -298,74 +310,156 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Lower Section: Recent Tickets Table */}
+      {/* Lower Section: Unassigned queue (admin/HOD/TL) / Recent tickets (others) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Tickets Table */}
         <div className="lg:col-span-3 custom-card overflow-hidden">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">Recent Ticket Requests</h3>
-              <p className="text-xs text-slate-500">Active requests submitted by students & departments</p>
-            </div>
-            <Link to="/tickets" className="btn-secondary text-xs gap-1">
-              <span>View All</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-3.5 px-4">Ticket ID</th>
-                  <th className="py-3.5 px-4">Title</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Priority</th>
-                  <th className="py-3.5 px-4 text-right">Updated</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {stats?.recent?.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-400">No active tickets available</td>
-                  </tr>
-                ) : (
-                  stats?.recent?.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-brand-600">
-                        <Link to={`/tickets/${t.id}`}>{t.ticket_id}</Link>
-                      </td>
-                      <td className="py-3 px-4 font-medium text-slate-900 max-w-xs truncate">
-                        <Link to={`/tickets/${t.id}`} className="hover:text-brand-600 transition-colors">
-                          {t.title}
-                        </Link>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${t.status === 'OPEN' ? 'bg-blue-100 text-blue-800' :
-                          t.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' :
-                            t.status === 'RESOLVED' || t.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
-                              'bg-rose-100 text-rose-800'
-                          }`}>
-                          {t.status?.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${t.priority === 'CRITICAL' ? 'bg-rose-500 text-white' :
-                          t.priority === 'HIGH' ? 'bg-amber-500 text-white' :
-                            'bg-slate-200 text-slate-700'
-                          }`}>
-                          {t.priority}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right text-slate-400">
-                        {new Date(t.updated_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))
+          {canSeeUnassigned ? (
+            <>
+              <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <UserX className="w-5 h-5 text-rose-500" />
+                    Unassigned Tickets
+                  </h3>
+                  <p className="text-xs text-slate-500">{unassignedScopeLabel} - open these tickets to assign an owner</p>
+                </div>
+                {unassignedCount > unassignedList.length && (
+                  <Link to="/tickets?mine=unassigned" className="btn-secondary text-xs gap-1">
+                    <span>View All ({unassignedCount})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 )}
-              </tbody>
-            </table>
-          </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3.5 px-4">Ticket ID</th>
+                      <th className="py-3.5 px-4">Title</th>
+                      <th className="py-3.5 px-4">Category</th>
+                      <th className="py-3.5 px-4">Priority</th>
+                      <th className="py-3.5 px-4">Created</th>
+                      <th className="py-3.5 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {!unassignedList.length ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-emerald-500 font-medium">
+                          All caught up - no tickets waiting for assignment
+                        </td>
+                      </tr>
+                    ) : (
+                      unassignedList.map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-brand-600">
+                            <Link to={`/tickets/${t.id}`}>{t.ticket_id}</Link>
+                          </td>
+                          <td className="py-3 px-4 font-medium text-slate-900 max-w-xs truncate">
+                            <Link to={`/tickets/${t.id}`} className="hover:text-brand-600 transition-colors">
+                              {t.title}
+                            </Link>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700">
+                              {t.category_name || 'General'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${t.priority === 'CRITICAL' ? 'bg-rose-500 text-white' :
+                              t.priority === 'HIGH' ? 'bg-amber-500 text-white' :
+                                'bg-slate-200 text-slate-700'
+                              }`}>
+                              {t.priority}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-400">
+                            {new Date(t.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <Link
+                              to={`/tickets/${t.id}`}
+                              className="px-2.5 py-1 rounded-lg bg-brand-50 text-brand-600 text-[11px] font-semibold hover:bg-brand-100 transition-colors"
+                            >
+                              Assign
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Recent Ticket Requests</h3>
+                  <p className="text-xs text-slate-500">Your submitted requests and their current status</p>
+                </div>
+                <Link to="/tickets" className="btn-secondary text-xs gap-1">
+                  <span>View All</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3.5 px-4">Ticket ID</th>
+                      <th className="py-3.5 px-4">Title</th>
+                      <th className="py-3.5 px-4">Status</th>
+                      <th className="py-3.5 px-4">Priority</th>
+                      <th className="py-3.5 px-4 text-right">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {!stats?.recent?.length ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400">No active tickets available</td>
+                      </tr>
+                    ) : (
+                      stats?.recent?.map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-brand-600">
+                            <Link to={`/tickets/${t.id}`}>{t.ticket_id}</Link>
+                          </td>
+                          <td className="py-3 px-4 font-medium text-slate-900 max-w-xs truncate">
+                            <Link to={`/tickets/${t.id}`} className="hover:text-brand-600 transition-colors">
+                              {t.title}
+                            </Link>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${t.status === 'OPEN' ? 'bg-blue-100 text-blue-800' :
+                              t.status === 'IN_PROGRESS' ? 'bg-amber-100 text-amber-800' :
+                                t.status === 'RESOLVED' || t.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
+                                  'bg-rose-100 text-rose-800'
+                              }`}>
+                              {STATUS_LABELS[t.status] || t.status?.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${t.priority === 'CRITICAL' ? 'bg-rose-500 text-white' :
+                              t.priority === 'HIGH' ? 'bg-amber-500 text-white' :
+                                'bg-slate-200 text-slate-700'
+                              }`}>
+                              {t.priority}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right text-slate-400">
+                            {new Date(t.updated_at).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

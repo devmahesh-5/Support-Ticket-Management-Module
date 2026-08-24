@@ -1,4 +1,4 @@
-"""Periodic SLA / escalation engine worker.
+"""One-shot / manual SLA / escalation engine pass.
 
 Runs a full evaluation pass over active tickets:
 
@@ -8,7 +8,11 @@ Runs a full evaluation pass over active tickets:
 - evaluates policy rules
 - performs auto escalation
 
-Schedule with cron, e.g. every 2 minutes:
+Continuous scheduling is handled by django-apscheduler:
+
+    python manage.py run_sla_scheduler
+
+This command remains for cron setups, debugging and one-off passes:
 
     */2 * * * * cd /path/to/backend && ./venv/bin/python manage.py run_sla_engine
 

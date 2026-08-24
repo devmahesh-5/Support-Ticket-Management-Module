@@ -1,48 +1,31 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Ticket, 
-  PlusCircle, 
-  ShieldCheck, 
-  Bell, 
-  LogOut, 
-  ChevronLeft, 
+import { NavLink } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  Ticket,
+  PlusCircle,
+  ShieldCheck,
+  Bell,
+  ChevronLeft,
   ChevronRight,
-  UserCheck,
-  UserX,
   Search,
   Gauge,
   ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { userAPI } from '../api/client';
 
 export default function Sidebar({ collapsed, setCollapsed, onOpenCommandPalette }) {
-  const { user, logout, updateUser } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
-
-  const setAvailability = async (isAvailable) => {
-    if (isAvailable === user?.is_available) return;
-    try {
-      const res = await userAPI.setAvailability({ is_available: isAvailable });
-      updateUser({ is_available: res.data.is_available });
-    } catch {}
-  };
-
-  const isStaff = ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
+  const isStaff = ['STAFF', 'TEAM_LEAD', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
   const isAdmin = ['DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
 
   const roleLabels = {
-    STUDENT: 'Student', 
-    CR: 'CR', 
+    STUDENT: 'Student',
+    CR: 'CR',
     STAFF: 'Staff',
-    DEPT_ADMIN: 'HOD', 
+    TEAM_LEAD: 'Team Lead',
+    DEPT_ADMIN: 'HOD',
     CAMPUS_ADMIN: 'Admin',
   };
 
@@ -134,64 +117,7 @@ export default function Sidebar({ collapsed, setCollapsed, onOpenCommandPalette 
         </nav>
       </div>
 
-      {/* Footer Controls & Profile */}
-      <div className="p-3 border-t border-slate-200 space-y-3">
-        {/* Staff Availability */}
-        {isStaff && (
-          <div className={`flex ${collapsed ? 'flex-col gap-2' : 'gap-2'}`}>
-            <button
-              onClick={() => setAvailability(true)}
-              className={`flex flex-1 items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all ${
-                user?.is_available
-                  ? 'bg-emerald-500 text-white border border-emerald-500 shadow-sm'
-                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-              }`}
-              title="Set Available"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              {!collapsed && <span>Available</span>}
-            </button>
-            <button
-              onClick={() => setAvailability(false)}
-              className={`flex flex-1 items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all ${
-                user?.is_available === false
-                  ? 'bg-amber-500 text-white border border-amber-500 shadow-sm'
-                  : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-              }`}
-              title="Set Busy"
-            >
-              <UserX className="w-3.5 h-3.5" />
-              {!collapsed && <span>Busy</span>}
-            </button>
-          </div>
-        )}
-
-        {/* User Card */}
-        <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} p-2 rounded-xl bg-slate-50 border border-slate-200/80`}>
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">
-              {(user?.full_name || user?.username || 'U')[0].toUpperCase()}
-            </div>
-            {!collapsed && (
-              <div className="flex flex-col truncate">
-                <span className="text-xs font-semibold text-slate-800 truncate">
-                  {user?.full_name || user?.username}
-                </span>
-                <span className="text-[10px] text-slate-500 truncate">
-                  {roleLabels[user?.role] || user?.role}
-                </span>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-            title="Log out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+      {/* Availability toggle now lives in the top navbar. */}
     </aside>
   );
 }

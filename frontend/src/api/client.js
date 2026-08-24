@@ -7,6 +7,18 @@ const api = axios.create({
   withCredentials: true,
   xsrfCookieName: "csrftoken",
   xsrfHeaderName: "X-CSRFToken",
+  headers: {
+    "Cache-Control": "no-cache, no-store",
+    Pragma: "no-cache",
+  },
+});
+
+api.interceptors.request.use((config) => {
+  if (config.method === "get") {
+    config.params = config.params || {};
+    config.params._t = Date.now();
+  }
+  return config;
 });
 
 export const authAPI = {
@@ -35,7 +47,16 @@ export const ticketAPI = {
 
 export const categoryAPI = {
   list: () => api.get("/tickets/categories/"),
+  create: (data) => api.post("/tickets/categories/", data),
   update: (id, data) => api.patch(`/tickets/categories/${id}/`, data),
+  remove: (id) => api.delete(`/tickets/categories/${id}/`),
+};
+
+export const departmentAPI = {
+  list: () => api.get("/auth/departments/"),
+  create: (data) => api.post("/auth/departments/", data),
+  update: (id, data) => api.patch(`/auth/departments/${id}/`, data),
+  remove: (id) => api.delete(`/auth/departments/${id}/`),
 };
 
 export const userAPI = {
@@ -44,6 +65,14 @@ export const userAPI = {
   update: (id, data) => api.patch(`/auth/users/${id}/`, data),
   remove: (id) => api.delete(`/auth/users/${id}/`),
   setAvailability: (data) => api.post("/auth/users/set_availability/", data),
+  teamMembers: () => api.get("/auth/users/team_members/"),
+};
+
+export const teamAPI = {
+  list: (params) => api.get("/auth/teams/", { params }),
+  create: (data) => api.post("/auth/teams/", data),
+  update: (id, data) => api.patch(`/auth/teams/${id}/`, data),
+  remove: (id) => api.delete(`/auth/teams/${id}/`),
 };
 
 export const systemSettingAPI = {

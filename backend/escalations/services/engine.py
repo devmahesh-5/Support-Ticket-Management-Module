@@ -9,8 +9,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from tickets.models import StatusLog, Ticket
-from tickets.categories import get_category_sla
+from tickets.models import StatusLog, Ticket, get_category_sla
 
 from ..models import EscalationHistory, EscalationPolicy, EscalationRule
 from . import assign as assign_svc

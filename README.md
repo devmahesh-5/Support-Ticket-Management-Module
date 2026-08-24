@@ -7,13 +7,14 @@ SRS Reference: `SRS_Support_Ticket_System_v1.2.pdf`
 ## Features
 
 - Ticket creation with categories, priority, file attachments
-- Auto-routing based on category rules
-- Role-based access: Student, CR, Staff, HOD, Campus Admin
+- Team-lead routing: every ticket goes to the responsible **team lead** (sub-department), who assigns it to their staff
+- Role-based access: Student, CR, Staff, **Team Lead**, HOD, Campus Admin
 - Chat-like thread view with internal notes for staff
 - In-app + email notifications
-- Multi-level escalation: Staff → HOD → Campus Admin
+- Multi-level escalation: Staff → Team Lead → HOD → Campus Admin
+- Config-driven SLA engine (**django-apscheduler**) with admin-editable escalation policies & rules
 - Dashboard with stats, SLA deadlines, staff metrics
-- Admin panel: users, categories, routing rules
+- Admin panel: users, teams, categories, escalation rules
 - Full-text search, filtering, sorting
 - CR class-level tickets
 
@@ -25,28 +26,32 @@ This section walks through the system from each user's point of view: what happe
 
 ### The building blocks
 
-**Support levels** — every ticket has an escalation level `0 → 1 → 2 → 3`:
+**Hierarchy & support levels** — departments contain **teams (sub-departments)** such as *Lab* or *Academic*, each headed by a **team lead**. Every ticket carries an escalation level `0 → 1 → 2 → 3`:
 
 | Level | Status shown | Who | How a ticket gets here |
 | ----- | ------------ | --- | ---------------------- |
-| 0 | *Open* | L1 staff | New ticket routing |
-| 1 | *Escalated L1* | L2 staff | Escalation policy `L1 → L2` — manual, or auto on SLA breach |
-| 2 | *Escalated L2* | Department HOD | Escalation policy `L2 → L3` — manual, or auto on SLA breach |
+| 0 | *In Progress* | Staff member | Assigned by their team lead |
+| 1 | *Escalated L1* ("With Team Lead") | Team Lead | New-ticket routing, or escalation |
+| 2 | *Escalated L2* ("With HOD") | Department HOD | Escalation policy — manual, or auto on SLA breach |
 | 3 | *Admin Review* | Campus Admin | Final hop past the configured policies — auto on continued breach, or manual |
 
-**The SLA clock** — every category has *response* and *resolution* hours. The clock **starts the moment a ticket is created** and **stops when the assigned staff clicks "Start Working"** (status becomes *In Progress*), which also records the first response. While a ticket is *In Progress* it is no longer tracked by the SLA engine.
+**Routing rule** — the category maps to a team (e.g. *Lab Equipment* → the department's **Lab** team; *Network / Internet* → CIT's **IT** team). The ticket lands on that team's **lead**, who assigns it to one of their staff members. There is **no automatic staff assignment anywhere**: not for students, and not even for admins creating tickets.
+
+**The SLA clock** — every category has *response* and *resolution* hours. The clock **starts the moment a ticket is created** and **stops when the assigned handler clicks "Start Working"** (status becomes *In Progress*), which also records the first response. While a ticket is *In Progress* it is no longer tracked by the SLA engine.
 
 **Who can do what**
 
-| Action | Student / CR | Staff | HOD | Campus Admin |
-| ------ | :---: | :---: | :---: | :---: |
-| Create ticket | Yes | Yes | Yes | Yes |
-| Reply on thread | Yes | Yes | Yes | Yes |
-| Start Working | — | Yes | Yes | Yes |
-| Manually escalate | Yes | Yes | Yes | Yes |
-| De-escalate | — | — | Yes (if enabled) | Yes (if enabled) |
-| Assign / reassign | — | — | Yes | Yes |
-| Configure policies & routing | — | — | Yes | Yes |
+| Action | Student / CR | Staff | Team Lead | HOD | Campus Admin |
+| ------ | :---: | :---: | :---: | :---: | :---: |
+| Create ticket | Yes | Yes | Yes | Yes | Yes |
+| Reply on thread | Yes | Yes | Yes | Yes | Yes |
+| Start Working | — | Yes | Yes | Yes | Yes |
+| Manually escalate | — | — | Yes | Yes | Yes |
+| De-escalate | — | — | — | Yes (if enabled) | Yes (if enabled) |
+| Assign within own team | — | — | Yes | Yes | Yes |
+| Reassign in own department | — | — | — | Yes | Yes |
+| Reassign anywhere | — | — | — | — | Yes |
+| Configure policies & rules | — | — | — | Read-only | Yes |
 
 ---
 
@@ -55,31 +60,30 @@ This section walks through the system from each user's point of view: what happe
 **Case 1 — I create a ticket**
 
 - I pick a **category** (e.g. *Lab Equipment*, *Classroom*, *Financial*), a **priority**, and write my description.
-- The system looks up the category's routing rule: which **department** owns it and which **specialty** it needs (a *lab staff* member for Lab Equipment, a *teacher* for Classroom, etc.).
-- It assigns the ticket to the **least-busy available L1 staff member in that department with that specialty** (fewest active tickets).
-- My SLA clock starts immediately and I get a confirmation with the assigned staff member's name.
+- The system resolves the category's **team** inside my department and assigns the ticket to that team's **team lead** — never directly to a staff member. Even admins who create tickets go through this same route.
+- My SLA clock starts immediately and I get a confirmation.
 
-**Case 2 — No matching specialty exists when my ticket is created**
+**Case 2 — No team / no team lead exists for my category**
 
-- The system **does not** fall back to "any random staff member". It skips straight to my **department HOD**, who assigns the right person manually. (Final fallback: Campus Admin.)
+- The system skips straight to my **department HOD**, who handles or forwards it. (Final fallback: Campus Admin.)
 
 **Case 3 — The assigned staff starts working**
 
-- The ticket shows *In Progress*. The staff member's first reply is recorded as the **first response** (my SLA response deadline is considered met), and the SLA clock stops while they work.
+- The ticket shows *In Progress*. The first reply is recorded as the **first response** (my SLA response deadline is considered met), and the SLA clock stops while they work.
 
 **Case 4 — I feel my ticket is stuck**
 
-- I can click **Escalate** on the ticket. Each click raises the level one step: `0 → 1 → 2 → 3`. At each hop the ticket is reassigned — same specialty where possible — ending at the **Campus Admin** (level 3, *Admin Review*). I cannot escalate a *Resolved* or *Closed* ticket.
+- Support roles can escalate on my behalf. Each click raises the level one step: `0 → 1 → 2 → 3` — staff → team lead → HOD → **Campus Admin** (*Admin Review*).
 
 **CR note** — a CR's tickets are automatically set to their **class department**, so class-wide issues go to the right department's queue from the start. Everything else works the same as a student.
 
 ---
 
-### Staff (L1)
+### Staff
 
-**Case 1 — A new ticket is routed to me**
+**Case 1 — A ticket is assigned to me**
 
-- I see it in my **Assigned** list with a countdown to the SLA deadlines.
+- My **team lead** hands me the ticket; I see it in my **Assigned** list with a countdown to the SLA deadlines.
 - At **50%** and **75%** of the SLA time, warning notifications are sent to me **and** my manager, so it doesn't silently slip.
 
 **Case 2 — I start working on it**
@@ -89,21 +93,21 @@ This section walks through the system from each user's point of view: what happe
 
 **Case 3 — I miss the response or resolution deadline**
 
-- The ticket's policy triggers. With **auto-escalate ON**, the ticket is raised to the policy's `to_level` (e.g. level 2) and reassigned — the notification tells me it left my queue.
-- With **auto-escalate OFF**, the ticket is moved to the **Escalation Queue** but stays assigned to me until the HOD reassigns it.
+- The ticket's policy triggers. With **auto-escalate ON**, the ticket moves up to the next level (my **team lead**, then beyond) and is reassigned — the notification tells me it left my queue.
+- With **auto-escalate OFF**, the ticket is moved to the **Escalation Queue** until the team lead/HOD reassigns it.
 
 ---
 
-### Staff (L2)
+### Team Lead
 
-**Case 1 — An escalated ticket lands on me**
+**Case 1 — New tickets arrive in my queue**
 
-- I only receive tickets whose **specialty matches the category** — a lab ticket goes to an L2 *lab* staff member, never to a teacher. This holds for both automatic (SLA breach) and manual escalation.
-- The same SLA warnings apply to me, and the same "Start Working" behavior stops the clock.
+- Tickets whose category maps to my team land **assigned to me** first. I triage them and use **Assign** to hand each one to a member of **my own team** — the system blocks me from assigning outside my team.
+- My "My team" filter shows everything currently held by my members so I keep oversight.
 
-**Case 2 — No L2 staff with my specialty exists when a ticket escalates**
+**Case 2 — A ticket escalates to me**
 
-- The system **never** assigns the ticket to a wrong-specialty L2 colleague. It escalates the ticket (level is raised, status becomes *Escalated L2*) and hands it to the **department HOD** to assign.
+- Breached tickets owned by my staff come back to me automatically (status *With Team Lead*). If I can't fix it either, escalating raises it to the **HOD**.
 
 ---
 
@@ -112,11 +116,11 @@ This section walks through the system from each user's point of view: what happe
 **Case 1 — The Escalation Queue has breached tickets (auto-escalate OFF)**
 
 - Breached tickets whose policy has **auto-escalate OFF** land in the **Escalation Queue** inbox on the SLA Dashboard.
-- I open each one and **assign it to the right staff member**; the ticket is then raised to level 3 (*Admin Review*) under my name.
+- I open each one and **assign it to the right person** in my department.
 
-**Case 2 — A ticket escalated but no matching staff was found**
+**Case 2 — A ticket escalates to me**
 
-- The ticket comes to me directly (level raised, status *Escalated L2*). I see it in my Assigned list and hand it to the correct person.
+- The ticket comes to me directly from a team lead (level raised, status *With HOD*). I see it in my Assigned list and handle it or reassign within my department.
 
 **Case 3 — Someone escalates a ticket all the way to the top**
 
@@ -124,7 +128,7 @@ This section walks through the system from each user's point of view: what happe
 
 **Case 4 — I want to send a ticket back down**
 
-- I can **de-escalate** (if two-way escalation is enabled): the level drops by one and the status goes back to *Escalated L1* (level 1) or *In Progress* (level 0).
+- I can **de-escalate** (if two-way escalation is enabled): the level drops by one — back to the team lead, then to a team member.
 
 ---
 
@@ -132,11 +136,11 @@ This section walks through the system from each user's point of view: what happe
 
 **Case 1 — Final fallback**
 
-- If a ticket has no matching staff **and** no department HOD (e.g. an unstaffed department), routed and breached tickets land with me.
+- If a ticket has no team, no lead **and** no department HOD (e.g. an unstaffed department), routed and breached tickets land with me.
 
 **Case 2 — Configuration**
 
-- I manage everything behind the scenes: users and their roles/levels, categories and their SLA hours, routing rules (department + specialty per category), and **escalation policies** (see below).
+- I manage everything behind the scenes: users, teams and their **team leads**, categories and their SLA hours, and **escalation policies/rules** (only the campus admin can change these — see below).
 
 ---
 
@@ -144,25 +148,25 @@ This section walks through the system from each user's point of view: what happe
 
 | Case | What happens | How |
 | ---- | ------------ | --- |
-| New ticket | Routed & assigned | Category → dept + specialty → least-busy available L1 staff |
-| No matching staff at creation | Goes to HOD | HOD → Campus Admin (never "any staff") |
-| Staff starts working | SLA stopped, first response recorded | Status → *In Progress* |
-| 50% / 75% SLA time | Warnings sent | In-app/email to assigned staff + manager |
-| Breach + policy **auto ON** | Auto-escalate | Level → policy's `to_level`, reassigned to same-specialty staff at that level; if none, HOD |
-| Breach + policy **auto OFF** | Pushed to Escalation Queue | HOD assigns from SLA Dashboard |
-| Breach persists past the last policy | Keeps auto-escalating | One hop per engine pass: L2 staff → HOD → Campus Admin (*Admin Review*) |
-| Manual escalation | Level +1 each click | `0 → 1 → 2 → 3`, same specialty per hop, ends at Campus Admin |
-| De-escalation | Level −1 | HOD/admin only, status back to *Escalated L1* / *In Progress* |
-| Resolve / close | Ticket leaves SLA tracking | SLA engine no longer touches it |
+| New ticket | Routed to the team lead | Category → team → lead (never direct-to-staff) |
+| No team / no lead at creation | Goes to HOD | HOD → Campus Admin |
+| Team lead assigns | Ticket handed down to level 0 | Only to members of their own team |
+| Handler starts working | SLA stopped, first response recorded | Status → *In Progress* |
+| 50% / 75% SLA time | Warnings sent | In-app/email to assigned handler + manager |
+| Breach + policy **auto ON** | Auto-escalate | Level → policy's `to_level`, reassigned at that level; if none, HOD |
+| Breach + policy **auto OFF** | Pushed to Escalation Queue | Lead/HOD assigns from SLA Dashboard |
+| Breach persists past the last policy | Keeps auto-escalating | One hop per engine pass: team lead → HOD → Campus Admin (*Admin Review*) |
+| Manual escalation | Level +1 each click | `0 → 1 → 2 → 3`, ends at Campus Admin |
+| De-escalation | Level −1 | HOD/admin only, back down the chain |
 
 ### The full journey of a breached ticket (step by step)
 
-1. Student creates a ticket → routed to L1 lab staff, SLA clock starts.
-2. Warnings at 50% and 75% go to the staff member and the manager.
+1. Student creates a ticket → routed to the **Lab team lead**, SLA clock starts.
+2. The lead assigns it to a lab staff member; warnings at 50% and 75% go to them and the manager.
 3. Deadline passes with no first response → the policy matches (department/category/priority):
-   - **auto ON** → ticket raised to the policy's target level, assigned to the same-specialty staff at that level. If none exists, the HOD gets it.
+   - **auto ON** → ticket raised to the policy's target level (assigned there; fallback HOD).
    - **auto OFF** → ticket moved to the Escalation Queue.
-4. If the SLA **stays** breached, every engine pass advances the ticket one more step up the chain — L2 staff → HOD → Campus Admin — until the chain ends at *Admin Review* (level 3) with the Campus Admin. Each step is logged once (`auto:escalated:N` for policy hops, `auto:stepped:N` past the last policy) so the engine never double-fires on the same level.
+4. If the SLA **stays** breached, every engine pass advances the ticket one more hop up the chain — team lead → HOD → Campus Admin — until *Admin Review* (level 3). Each step is logged once (`auto:escalated:N`) so the engine never double-fires on the same level.
 5. Every action (policy applied, warning sent, breach, escalation, reassignment) is written to the ticket's **audit trail**, so the full history is visible.
 6. Whoever ends up with the ticket clicks **Start Working**, replies (first response recorded), and works it to resolution.
 
@@ -171,14 +175,16 @@ This section walks through the system from each user's point of view: what happe
 Escalation is **policy-driven**, not hardcoded. Each **Escalation Policy** sets:
 
 - **Scope** — which department / category / priority it applies to (the most specific match wins)
-- **From level → to level** — e.g. L1 → L2, or all the way to level 3
-- **Auto-escalate** — ON: auto-assign on breach; OFF: push to the Escalation Queue for the HOD
+- **From level → to level** — handler levels `0=Staff, 1=Team Lead, 2=HOD, 3=Campus Admin`; create any chain you need (e.g. `0→1`, `1→2`, `2→3`)
+- **Auto-escalate** — ON: auto-assign on breach; OFF: push to the Escalation Queue
 - **Delay** — how long after the breach before it triggers (`escalation_delay_minutes`)
-- **Warnings** — 50% / 75% (or custom) thresholds for the assigned staff and manager
+- **Warnings** — 50% / 75% (or custom) thresholds for the assigned handler and manager
 
-Optional **Escalation Rules** (IF conditions / THEN actions) add extra triggers, e.g. escalate on no-activity hours, bump priority, notify, or assign a specific user or level.
+Optional **Escalation Rules** (IF conditions / THEN actions) add extra triggers, e.g. escalate on no-activity hours, bump priority, notify, or assign a specific user or level. There is no cap on the number of policies — build the exact chain your organization needs.
 
-The only hardcoded behavior is *who* receives the ticket: least-busy available staff at the target level **matching the category's specialty**, then the department HOD, then the Campus Admin — and the one hardcoded escalation step: once a ticket has exhausted its configured policies, a still-breached ticket keeps stepping up automatically until it reaches the **Campus Admin** (*Admin Review*).
+Only the **Campus Admin** can create/edit/delete policies and rules (HODs and staff have read access).
+
+The only hardcoded behavior is *who* receives the ticket at each level: the team's lead (level 1), least-busy member of the ticket's team (level 0), the department HOD (level 2), then the Campus Admin (level 3) — and the one hardcoded escalation step: once a ticket has exhausted its configured policies, a still-breached ticket keeps stepping up automatically until it reaches the **Campus Admin** (*Admin Review*).
 
 ---
 
@@ -229,73 +235,15 @@ python manage.py migrate
 
 ### Step 3: Seed Data
 
-Run this to create admin, staff, students, categories, and routing rules:
+Run this to create the admin, HODs, **team leads + teams**, staff members, and students:
 
 ```bash
 python manage.py seed
 ```
 
-Or do it manually:
+Every seeded user gets the password **`pass@123`** (override with `python manage.py seed --password <pw>`).
 
-```bash
-DJANGO_SUPERUSER_PASSWORD=pass@123 python manage.py createsuperuser \
-  --username admin --email admin@pulchowk.edu --noinput
-```
-
-Then run the Python seed script from the project root:
-
-```bash
-cd ..
-python -c "
-import django, os
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-import sys; sys.path.insert(0, 'backend')
-django.setup()
-from accounts.models import User
-from tickets.models import Category, RoutingRule
-
-admin = User.objects.get(username='admin')
-admin.role = User.Role.CAMPUS_ADMIN; admin.save()
-
-for name, desc in {
-    'Internet / Network': 'Campus internet, WiFi, network issues',
-    'Hardware / Lab Equipment': 'Lab hardware, projector, printer issues',
-    'Academic': 'Grades, registration, transcripts, exams',
-    'Financial / Fees': 'Payments, scholarships, refunds, fees',
-    'Department-specific': 'Department-related issues',
-    'Library': 'Library services, book issues',
-    'Hostel / Facilities': 'Hostel, accommodation, maintenance',
-    'General / Other': 'Other issues',
-}.items():
-    Category.objects.get_or_create(name=name, defaults={'description': desc})
-
-users = [
-    ('080bct045', 'Mahesh', 'Bhandari', User.Role.STUDENT, 'COM', 'BCT'),
-    ('080bct001', 'Kushal', 'Gautam', User.Role.STUDENT, 'COM', 'BCT'),
-    ('080bct010', 'Lav Raj', 'Karn', User.Role.CR, 'COM', 'BCT'),
-    ('080bct020', 'Mission', 'Baraily', User.Role.STUDENT, 'COM', 'BCT'),
-    ('hod.computer', 'Dr. Hari', 'Sharma', User.Role.DEPT_ADMIN, 'COM', ''),
-    ('staff.cit1', 'Ram', 'Thapa', User.Role.STAFF, 'COM', ''),
-    ('staff.cit2', 'Sita', 'Poudel', User.Role.STAFF, 'COM', ''),
-    ('hod.electrical', 'Dr. Rajesh', 'KC', User.Role.DEPT_ADMIN, 'ELE', ''),
-    ('080bel001', 'Alisha', 'Rai', User.Role.STUDENT, 'ELE', 'BEL'),
-]
-
-for uname, first, last, role, dept, section in users:
-    u, _ = User.objects.get_or_create(username=uname)
-    u.first_name = first; u.last_name = last; u.role = role
-    u.department = dept; u.section = section or None
-    u.set_password('pass@123'); u.save()
-
-internet = Category.objects.get(name='Internet / Network')
-academic = Category.objects.get(name='Academic')
-finance = Category.objects.get(name='Financial / Fees')
-RoutingRule.objects.get_or_create(category=internet, defaults={'target_department': 'CIT', 'priority': 1, 'is_active': True})
-RoutingRule.objects.get_or_create(category=academic, defaults={'target_department': 'ACADEMIC', 'priority': 2, 'is_active': True})
-RoutingRule.objects.get_or_create(category=finance, defaults={'target_department': 'FINANCE', 'priority': 3, 'is_active': True})
-print('Seed complete')
-"
-```
+The seed creates teams (Lab / Academic per academic department, plus specialty teams for CIT/FIN/ACA/LIB/FAC) with a team lead on each.
 
 ### Step 4: Run Backend Server
 
@@ -307,7 +255,23 @@ python manage.py runserver 0.0.0.0:8000
 
 Backend API will be available at **http://localhost:8000/api/**
 
-### Step 5: Run Frontend (separate terminal)
+### Step 5: Run the SLA Engine Scheduler (separate terminal)
+
+The SLA deadline check engine runs on **django-apscheduler** in its own process:
+
+```bash
+cd backend
+source ../venv/bin/activate
+python manage.py run_sla_scheduler
+```
+
+- The tick interval is configurable via `SLA_ENGINE_INTERVAL_SECONDS` (default 60s).
+- Jobs are persisted in the DB (django_apscheduler tables); a slow pass never overlaps the next one (`max_instances=1`, `coalesce=True`).
+- For one-off/debug passes you can still run `python manage.py run_sla_engine --ticket <pk>` or use cron with that command.
+
+> Run the scheduler as its own process (not inside gunicorn workers) so multiple web workers can't double-fire the engine.
+
+### Step 6: Run Frontend (separate terminal)
 
 ```bash
 cd frontend
@@ -319,22 +283,30 @@ Frontend UI will be available at **http://localhost:3000**
 
 ---
 
+## Running Tests
+
+```bash
+# From the project root - uses a throwaway SQLite DB (no CREATEDB privilege needed)
+./venv/bin/python backend/manage.py test tickets escalations accounts --settings=config.test_settings
+```
+
+---
+
 ## Credentials
 
-All passwords: **`pass@123`**
+All seeded users share the password **`pass@123`** (configurable via `--password`).
 
 | Role          | Username         | Department |
 | ------------- | ---------------- | ---------- |
 | Campus Admin  | `admin`          | -          |
 | HOD           | `hod.computer`   | Computer   |
-| HOD           | `hod.electrical` | Electrical |
-| Staff         | `staff.cit1`     | Computer   |
-| Staff         | `staff.cit2`     | Computer   |
+| Team Lead     | `lead.com.lab`   | Computer   |
+| Team Lead     | `lead.com.academic` | Computer |
+| Team Lead     | `lead.cit.it`    | IT Support |
+| Staff         | `staff.com1`     | Computer   |
+| Staff         | `staff.cit1`     | IT Support |
 | CR            | `080bct010`      | Computer   |
 | Student       | `080bct045`      | Computer   |
-| Student       | `080bct001`      | Computer   |
-| Student       | `080bct020`      | Computer   |
-| Student       | `080bel001`      | Electrical |
 
 ---
 
@@ -344,16 +316,19 @@ All passwords: **`pass@123`**
 | ------ | ------------------------------------ | ------------------ |
 | POST   | `/api/auth/login/`                   | Login              |
 | GET    | `/api/auth/me/`                      | Current user       |
+| GET    | `/api/auth/users/team_members/`      | Members of my team(s) |
+| GET/POST | `/api/auth/teams/`                 | Manage teams (sub-departments) |
 | GET    | `/api/tickets/`                      | List tickets       |
-| POST   | `/api/tickets/`                      | Create ticket      |
+| POST   | `/api/tickets/`                      | Create ticket (routes to team lead) |
 | GET    | `/api/tickets/{id}/`                 | Ticket detail      |
 | POST   | `/api/tickets/{id}/add_message/`     | Add reply/note     |
 | POST   | `/api/tickets/{id}/change_status/`   | Change status      |
-| POST   | `/api/tickets/{id}/reassign/`        | Reassign           |
+| POST   | `/api/tickets/{id}/reassign/`        | Reassign (role-scoped) |
 | POST   | `/api/tickets/{id}/escalate/`        | Escalate           |
 | GET    | `/api/tickets/dashboard/`            | Dashboard          |
 | GET    | `/api/tickets/stats/`                | Statistics         |
 | GET    | `/api/notifications/`                | Notifications      |
+| GET/POST | `/api/escalations/policies/`       | Escalation policies (campus admin writes) |
 
 ---
 
@@ -361,15 +336,16 @@ All passwords: **`pass@123`**
 
 ```
 ├── backend/
-│   ├── config/           # Django settings, urls, wsgi
-│   ├── accounts/         # Custom User model, auth views
+│   ├── config/           # Django settings, urls, wsgi, test settings
+│   ├── accounts/         # Custom User model, teams (sub-departments), auth
 │   ├── tickets/          # Core: models, views, routing, serializers
 │   ├── notifications/    # Notifications & templates
+│   ├── escalations/      # SLA engine, policies, apscheduler scheduler
 │   └── manage.py
 ├── frontend/
 │   ├── src/
 │   │   ├── api/          # Axios API client
-│   │   ├── components/   # Dashboard, TicketList, TicketDetail, etc.
+│   │   ├── components/   # Dashboard, TicketList, TicketDetail, escalations UI
 │   │   └── contexts/     # Auth context
 │   └── public/
 ├── venv/                 # Python virtual environment

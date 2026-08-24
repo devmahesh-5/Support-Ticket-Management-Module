@@ -9,15 +9,20 @@ from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Ticket, TicketMessage, StatusLog, Attachment, SystemSetting, CategorySla
+from .models import (
+    Ticket, TicketCategory, TicketMessage, StatusLog, Attachment, SystemSetting,
+)
 from .serializers import (
     TicketListSerializer, TicketDetailSerializer, TicketCreateSerializer,
     TicketMessageSerializer, StatusLogSerializer, AttachmentSerializer,
-    SystemSettingSerializer,
+    SystemSettingSerializer, CategorySerializer,
 )
 from .routing import assign_ticket, ACTIVE_STATUSES
-from .categories import CATEGORY_NAMES, CATEGORY_BY_SLUG, category_dict
-from escalations.services.assign import escalation_level_for_assignee
+from escalations.services.assign import (
+    CAMPUS_ADMIN_LEVEL,
+    HOD_LEVEL,
+    escalation_level_for_assignee,
+)
 from accounts.models import User
 from notifications.models import Notification
 from notifications.services import METHOD_EMAIL, METHOD_IN_APP, notify_user
@@ -49,41 +54,42 @@ class TicketFilter(FilterSet):
 
 class IsStaffOrAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in [
-            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
-        ]
+        return request.user.is_authenticated and request.user.role in User.support_roles()
 
 
-class CategoryListView(APIView):
-    """Read-only list of the hardcoded ticket categories."""
+class IsCampusAdminWrite(permissions.BasePermission):
+    """Read for any authenticated user; create/update/delete campus admin only."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    def has_permission(self, request, view):
+        user = request.user
+        if not user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return user.role == User.Role.CAMPUS_ADMIN
 
-    def get(self, request):
-        return Response([category_dict(name) for name in CATEGORY_NAMES])
 
+class CategoryViewSet(viewsets.ModelViewSet):
+    """Dynamic ticket categories (admin-created, admin-updated).
 
-class CategorySlaDetailView(APIView):
-    """Update the admin-configurable SLA target hours for a hardcoded category."""
+    Categories only carry SLA hours - they play no part in routing.
+    """
 
-    permission_classes = [permissions.IsAuthenticated, IsStaffOrAdmin]
+    queryset = TicketCategory.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticated, IsCampusAdminWrite]
+    filterset_fields = ["is_active"]
 
-    def patch(self, request, slug):
-        name = CATEGORY_BY_SLUG.get(slug)
-        if name is None:
-            return Response({"detail": "Unknown category."}, status=status.HTTP_404_NOT_FOUND)
-        row, _ = CategorySla.objects.get_or_create(category=name)
-        for field in ("sla_response_hours", "sla_resolution_hours"):
-            if field in request.data:
-                try:
-                    value = int(request.data[field])
-                except (TypeError, ValueError):
-                    return Response({field: ["Must be an integer."]}, status=status.HTTP_400_BAD_REQUEST)
-                if value < 1 or value > 720:
-                    return Response({field: ["Must be between 1 and 720 hours."]}, status=status.HTTP_400_BAD_REQUEST)
-                setattr(row, field, value)
-        row.save()
-        return Response(category_dict(name))
+    def get_queryset(self):
+        qs = TicketCategory.objects.all()
+        if self.request.query_params.get("include_inactive") != "1":
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def perform_destroy(self, instance):
+        # Soft-delete: historical tickets keep referencing the name.
+        instance.is_active = False
+        instance.save()
 
 
 class TicketViewSet(viewsets.ModelViewSet):
@@ -111,24 +117,50 @@ class TicketViewSet(viewsets.ModelViewSet):
                 Q(assigned_to__department=user.department) |
                 Q(created_by=user)
             )
+        elif user.role == User.Role.TEAM_LEAD:
+            # Teams the lead manages PLUS the team they personally belong to
+            # ("their actual sub-department"). Also matches tickets whose
+            # current assignee belongs to those teams (legacy tickets may not
+            # carry a sub-department stamp).
+            #
+            # Tickets currently handled at or above HOD level
+            # (escalation_level >= 2) are OUT of the lead's scope: a lead only
+            # sees tickets held by themself or by their (lower) staff.
+            led_team_ids = list(user.led_teams.filter(is_active=True).values_list("id", flat=True))
+            if user.sub_department_id and user.sub_department_id not in led_team_ids:
+                led_team_ids.append(user.sub_department_id)
+            qs = qs.filter(
+                Q(assigned_to=user) |
+                Q(created_by=user) |
+                Q(sub_department_id__in=led_team_ids) |
+                Q(assigned_to__sub_department_id__in=led_team_ids)
+            ).exclude(escalation_level__gte=HOD_LEVEL)
         elif user.role == User.Role.STAFF:
             qs = qs.filter(Q(assigned_to=user) | Q(created_by=user))
         else:
             qs = qs.filter(created_by=user)
 
         mine = self.request.query_params.get("mine")
-        if user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]:
+        if user.role in User.support_roles():
             if mine == "assigned":
                 qs = qs.filter(assigned_to=user)
             elif mine == "created":
                 qs = qs.filter(created_by=user)
+            elif mine == "unassigned":
+                qs = qs.filter(assigned_to__isnull=True)
+            elif mine == "team" and user.role == User.Role.TEAM_LEAD:
+                team_ids = list(user.led_teams.filter(is_active=True).values_list("id", flat=True))
+                if user.sub_department_id:
+                    team_ids.append(user.sub_department_id)
+                qs = qs.filter(
+                    Q(sub_department_id__in=team_ids) |
+                    Q(assigned_to__sub_department_id__in=team_ids)
+                )
         return qs
 
     def _visible_messages(self):
         user = getattr(self.request, "user", None)
-        if user and user.is_authenticated and user.role in [
-            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
-        ]:
+        if user and user.is_authenticated and user.role in User.support_roles():
             return TicketMessage.objects.all()
         return TicketMessage.objects.filter(is_internal_note=False)
 
@@ -147,25 +179,18 @@ class TicketViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         ticket = serializer.save(created_by=user)
-        if not ticket.department and user.role in [User.Role.CR, User.Role.STUDENT]:
+        if not ticket.department and user.department:
             ticket.department = user.department
-        explicit = (
-            user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]
-            and ticket.assigned_to_id
-        )
-        ticket.escalation_level = (
-            escalation_level_for_assignee(ticket.assigned_to) if explicit else 0
-        )
+        ticket.escalation_level = 0
         ticket.last_activity_at = timezone.now()
         ticket.save(update_fields=["department", "escalation_level", "last_activity_at", "updated_at"])
 
-        if not explicit:
-            assign_ticket(ticket)
-            ticket.refresh_from_db()
-            ticket.escalation_level = escalation_level_for_assignee(ticket.assigned_to)
-            ticket.save(update_fields=["escalation_level", "updated_at"])
-        else:
-            ticket.refresh_from_db()
+        # Every ticket routes to the responsible team lead (no direct staff
+        # assignment at creation, regardless of who created it).
+        assign_ticket(ticket)
+        ticket.refresh_from_db()
+        ticket.escalation_level = escalation_level_for_assignee(ticket.assigned_to)
+        ticket.save(update_fields=["escalation_level", "updated_at"])
 
         from escalations.services.engine import evaluate_ticket
         evaluate_ticket(ticket)
@@ -194,9 +219,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         if not content and not files:
             return Response({"error": "Content is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if is_internal and request.user.role not in [
-            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
-        ]:
+        if is_internal and request.user.role not in User.support_roles():
             return Response({"error": "Only staff can add internal notes"}, status=status.HTTP_403_FORBIDDEN)
 
         message = TicketMessage.objects.create(
@@ -307,7 +330,22 @@ class TicketViewSet(viewsets.ModelViewSet):
         new_status = request.data.get("status")
         user = request.user
         is_creator = user.id == ticket.created_by_id
-        is_staff = user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]
+        is_staff = user.role in User.support_roles()
+
+        # Hierarchy read-only rules:
+        # - a team lead cannot touch tickets handled at/above HOD level
+        # - a HOD cannot touch tickets handed to the campus admin
+        level = ticket.escalation_level or 0
+        if user.role == User.Role.TEAM_LEAD and level >= HOD_LEVEL:
+            return Response(
+                {"error": "Read-only: this ticket has been escalated beyond your level"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if user.role == User.Role.DEPT_ADMIN and level >= CAMPUS_ADMIN_LEVEL:
+            return Response(
+                {"error": "Read-only: this ticket is with the campus admin"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if new_status not in [s.value for s in Ticket.Status]:
             return Response({"error": f"Invalid status: {new_status}"}, status=status.HTTP_400_BAD_REQUEST)
@@ -372,6 +410,7 @@ class TicketViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def reassign(self, request, pk=None):
         ticket = self.get_object()
+        user = request.user
         user_id = request.data.get("assigned_to")
 
         if not user_id:
@@ -382,16 +421,25 @@ class TicketViewSet(viewsets.ModelViewSet):
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        error = self._check_reassign_permission(user, ticket, new_assignee)
+        if error:
+            return Response({"error": error}, status=status.HTTP_403_FORBIDDEN)
+
+        old_level = ticket.escalation_level or 0
+        old_status = ticket.status
         old_assignee = ticket.assigned_to
         ticket.assigned_to = new_assignee
         ticket.queue = None
         ticket.escalation_level = escalation_level_for_assignee(new_assignee)
+        if ticket.escalation_level != old_level:
+            from escalations.services.assign import status_for_level
+            ticket.status = status_for_level(ticket.escalation_level)
         ticket.last_activity_at = timezone.now()
         ticket.save()
 
         StatusLog.objects.create(
-            ticket=ticket, from_status=ticket.status, to_status=ticket.status,
-            changed_by=request.user,
+            ticket=ticket, from_status=old_status, to_status=ticket.status,
+            changed_by=user,
             note=f"Reassigned from {old_assignee} to {new_assignee}"
         )
 
@@ -405,6 +453,60 @@ class TicketViewSet(viewsets.ModelViewSet):
         )
 
         return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
+
+    @staticmethod
+    def _check_reassign_permission(user, ticket, new_assignee):
+        """Who may move a ticket where:
+        - TEAM_LEAD: only tickets currently sitting with them (or in a team
+          they lead), and only to staff members of their own team(s).
+        - DEPT_ADMIN: anywhere within their own department.
+        - CAMPUS_ADMIN: anywhere.
+        - Everyone else (including regular staff): not allowed; assignment
+          within the team is the team lead's job.
+        """
+        assignable_roles = [
+            User.Role.STAFF, User.Role.TEAM_LEAD, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN,
+        ]
+        if new_assignee.role not in assignable_roles or not new_assignee.is_active:
+            return "Assignee must be an active staff member, team lead or admin"
+
+        if user.role == User.Role.CAMPUS_ADMIN:
+            return None
+
+        if user.role == User.Role.DEPT_ADMIN:
+            # Read-only for tickets that reached the campus admin.
+            if (ticket.escalation_level or 0) >= CAMPUS_ADMIN_LEVEL:
+                return "Tickets escalated to the campus admin can only be reassigned by the campus admin"
+            dept = new_assignee.department or (
+                ticket.sub_department.department if ticket.sub_department_id else None
+            )
+            if dept != user.department:
+                return "HODs can only reassign within their own department"
+            return None
+
+        if user.role == User.Role.TEAM_LEAD:
+            # Read-only for tickets handled at HOD level or above: only the
+            # HOD / campus admin may touch those.
+            if (ticket.escalation_level or 0) >= HOD_LEVEL:
+                return "Tickets escalated to the HOD or campus admin can no longer be reassigned by a team lead"
+            led_team_ids = set(
+                user.led_teams.filter(is_active=True).values_list("id", flat=True)
+            )
+            holds_ticket = (
+                ticket.assigned_to_id == user.id
+                or (ticket.sub_department_id and ticket.sub_department_id in led_team_ids)
+                or (ticket.assigned_to_id and ticket.assigned_to.sub_department_id in led_team_ids)
+            )
+            if not holds_ticket:
+                return "Team leads can only assign tickets held by them or their team"
+            if new_assignee.role == User.Role.STAFF:
+                if new_assignee.sub_department_id not in led_team_ids:
+                    return "Team leads can only assign to members of their own team"
+            elif new_assignee.id != user.id:
+                return "Team leads can only assign tickets to their own team members"
+            return None
+
+        return "You do not have permission to reassign tickets"
 
     @action(detail=True, methods=["post"])
     def escalate(self, request, pk=None):
@@ -435,6 +537,17 @@ class TicketViewSet(viewsets.ModelViewSet):
         if ticket.escalation_level <= 0:
             return Response({"error": "Ticket is already at the lowest escalation level"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # A HOD cannot pull back a ticket that sits with the campus admin;
+        # only the campus admin (or a policy/engine action) can do that.
+        if (
+            request.user.role == User.Role.DEPT_ADMIN
+            and ticket.escalation_level >= CAMPUS_ADMIN_LEVEL
+        ):
+            return Response(
+                {"error": "Read-only: this ticket is with the campus admin"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         assignee = assign_svc.deescalate_ticket(
             ticket, policy=ticket.escalation_policy,
             actor=request.user, note="Manually de-escalated",
@@ -445,11 +558,21 @@ class TicketViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def change_priority(self, request, pk=None):
         ticket = self.get_object()
-        if request.user.role not in [
-            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
-        ]:
+        user = request.user
+        if user.role not in User.support_roles():
             return Response(
                 {"error": "Only staff or administrators can set ticket priority"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        level = ticket.escalation_level or 0
+        if user.role == User.Role.TEAM_LEAD and level >= HOD_LEVEL:
+            return Response(
+                {"error": "Read-only: this ticket has been escalated beyond your level"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if user.role == User.Role.DEPT_ADMIN and level >= CAMPUS_ADMIN_LEVEL:
+            return Response(
+                {"error": "Read-only: this ticket is with the campus admin"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         new_priority = request.data.get("priority")
@@ -532,7 +655,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         qs = self.get_queryset()
 
         mine = request.query_params.get("mine")
-        if user.role in [User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN]:
+        if user.role in User.support_roles():
             if mine == "assigned":
                 qs = qs.filter(assigned_to=user)
             elif mine == "created":
@@ -544,9 +667,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         escalated_count = qs.filter(
             status__in=["ESCALATED_L1", "ESCALATED_L2", "ADMIN_REVIEW"]
         ).count()
-        my_tickets = qs.filter(assigned_to=user).count() if user.role in [
-            User.Role.STAFF, User.Role.DEPT_ADMIN, User.Role.CAMPUS_ADMIN
-        ] else 0
+        my_tickets = qs.filter(assigned_to=user).count() if user.role in User.support_roles() else 0
 
         # Real Overdue & Compliance
         overdue_count = qs.filter(
@@ -591,6 +712,36 @@ class TicketViewSet(viewsets.ModelViewSet):
         recent = qs.order_by("-updated_at")[:4]
         recent_serializer = TicketListSerializer(recent, many=True, context={"request": request})
 
+        # Unassigned backlog - visible ONLY to campus admins, HODs and team
+        # leads, each scoped to their own hierarchy (campus / department /
+        # teams). Staff and students never receive this data.
+        UNASSIGNED_VIEWERS = (
+            User.Role.CAMPUS_ADMIN, User.Role.DEPT_ADMIN, User.Role.TEAM_LEAD,
+        )
+        if user.role in UNASSIGNED_VIEWERS:
+            active_statuses = ["OPEN", "IN_PROGRESS", "REOPENED", "ESCALATED_L1", "ESCALATED_L2", "ADMIN_REVIEW"]
+            unassigned_qs = qs.filter(
+                assigned_to__isnull=True, status__in=active_statuses
+            ).select_related("created_by", "assigned_to").order_by("-created_at")
+            unassigned_count = unassigned_qs.count()
+
+            if user.role == User.Role.CAMPUS_ADMIN:
+                # Campus-wide: unassigned grouped per department.
+                rows = unassigned_qs.values("department").annotate(n=Count("id"))
+                unassigned_breakdown = [
+                    {"label": r["department"] or "No department", "count": r["n"]} for r in rows
+                ]
+            else:
+                # HOD: teams inside their department. Team lead: their own team(s).
+                rows = unassigned_qs.values("sub_department__name").annotate(n=Count("id"))
+                unassigned_breakdown = [
+                    {"label": r["sub_department__name"] or "No team", "count": r["n"]} for r in rows
+                ]
+        else:
+            unassigned_qs = Ticket.objects.none()
+            unassigned_count = 0
+            unassigned_breakdown = []
+
         return Response({
             "open": open_count,
             "in_progress": in_progress_count,
@@ -604,6 +755,9 @@ class TicketViewSet(viewsets.ModelViewSet):
             "by_category": by_category,
             "activity_feed": activity_feed,
             "recent": recent_serializer.data,
+            "unassigned": unassigned_count,
+            "unassigned_list": TicketListSerializer(unassigned_qs[:8], many=True).data,
+            "unassigned_breakdown": unassigned_breakdown,
         })
 
     @staticmethod
@@ -620,17 +774,34 @@ class TicketViewSet(viewsets.ModelViewSet):
         user = self.request.user
         request = self.request
 
-        # Staff + HODs (DEPT_ADMIN). A DEPT_ADMIN (HOD) always sees only their
-        # own department's roster; a campus admin can filter freely.
-        staff_qs = User.objects.filter(
-            role__in=[User.Role.STAFF, User.Role.DEPT_ADMIN]
+        # Staff + team leads + HODs (DEPT_ADMIN). A DEPT_ADMIN (HOD) always
+        # sees only their own department's roster; a campus admin can filter
+        # freely.
+        staff_qs = (
+            User.objects.filter(role__in=[
+                User.Role.STAFF, User.Role.TEAM_LEAD, User.Role.DEPT_ADMIN,
+            ])
+            .select_related("sub_department")
         )
         if user.role == User.Role.DEPT_ADMIN:
             staff_qs = staff_qs.filter(department=user.department)
+        elif user.role == User.Role.TEAM_LEAD:
+            # Roster: their department, focused on the team(s) they lead or
+            # belong to (plus the HOD for context).
+            team_ids = list(user.led_teams.filter(is_active=True).values_list("id", flat=True))
+            if user.sub_department_id and user.sub_department_id not in team_ids:
+                team_ids.append(user.sub_department_id)
+            staff_qs = staff_qs.filter(
+                Q(department=user.department) &
+                (
+                    Q(sub_department_id__in=team_ids) |
+                    Q(led_teams__id__in=team_ids) |
+                    Q(role=User.Role.DEPT_ADMIN)
+                )
+            )
 
         filters = {
             "staff_department": "department",
-            "staff_type": "staff_type",
             "staff_level": "level",
             "staff_role": "role",
         }
@@ -678,7 +849,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                 "username": staff.username,
                 "role": staff.role,
                 "department": staff.department,
-                "staff_type": staff.staff_type,
+                "team": staff.sub_department.name if staff.sub_department_id else None,
                 "level": staff.level,
                 "tickets_assigned": assigned,
                 "resolved": resolved,
@@ -803,6 +974,8 @@ class TicketViewSet(viewsets.ModelViewSet):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         resp["Content-Disposition"] = 'attachment; filename="' + filename + '"'
+        # Row count (excluding the header) so the client can warn on empty exports.
+        resp["X-Export-Rows"] = str(qs.count())
         return resp
 
 

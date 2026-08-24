@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { z } from "zod";
-import { escalationAPI, categoryAPI } from "../../api/client";
+import { escalationAPI, categoryAPI, departmentAPI } from "../../api/client";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogClose } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -8,7 +8,7 @@ import { Select } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { Form, FormField, useForm } from "../ui/form";
 import {
-  DELAY_PRESETS, DEPARTMENTS, PRIORITIES, SUPPORT_LEVELS,
+  DELAY_PRESETS, PRIORITIES, SUPPORT_LEVELS,
 } from "./constants";
 
 const policySchema = z.object({
@@ -78,7 +78,7 @@ function toFormValues(p) {
     ...emptyDefaults,
     name: p.name, description: p.description || "", is_enabled: p.is_enabled,
     department: p.department || "", category: p.category || null, priority: p.priority || "",
-    from_level: p.from_level || null, to_level: p.to_level || null,
+    from_level: p.from_level ?? null, to_level: p.to_level ?? null,
     auto_escalate: p.auto_escalate, escalation_delay_minutes: p.escalation_delay_minutes,
     increase_priority_on_breach: p.increase_priority_on_breach,
     escalate_critical_immediately: p.escalate_critical_immediately,
@@ -95,6 +95,7 @@ function toFormValues(p) {
 
 export default function PolicyEditor({ open, onClose, onSaved, editing }) {
   const [categories, setCategories] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [mapping, setMapping] = useState(DEFAULT_MAPPING);
 
   const form = useForm({ schema: policySchema, defaultValues: emptyDefaults });
@@ -104,6 +105,7 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
       form.reset(toFormValues(editing));
       setMapping(editing?.priority_mapping || DEFAULT_MAPPING);
       categoryAPI.list().then((res) => setCategories(res.data.results || res.data || [])).catch(() => {});
+      departmentAPI.list().then((res) => setDepartments(res.data.results || res.data || [])).catch(() => {});
     }
   }, [open, editing]);
 
@@ -113,8 +115,8 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
       department: values.department || null,
       category: values.category || null,
       priority: values.priority || null,
-      from_level: values.from_level || null,
-      to_level: values.to_level || null,
+      from_level: values.from_level ?? null,
+      to_level: values.to_level ?? null,
       priority_mapping: mapping,
     };
     try {
@@ -141,13 +143,13 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
             <FormField name="department" label="Department (optional)" children={({ field }) => (
               <Select {...field} value={field.value || ""} onChange={(e) => field.onChange(e.target.value)}>
                 <option value="">Any Department</option>
-                {DEPARTMENTS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                {departments.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
               </Select>
             )} />
             <FormField name="category" label="Category (optional)" children={({ field }) => (
               <Select {...field} value={field.value || ""} onChange={(e) => field.onChange(e.target.value || null)}>
                 <option value="">Any Category</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
               </Select>
             )} />
             <FormField name="priority" label="Priority (optional)" children={({ field }) => (
@@ -156,16 +158,16 @@ export default function PolicyEditor({ open, onClose, onSaved, editing }) {
                 {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </Select>
             )} />
-            <FormField name="from_level" label="From level" children={({ field }) => (
-              <Select {...field} value={field.value || ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}>
+            <FormField name="from_level" label="From level (ticket currently handled at)" children={({ field }) => (
+              <Select {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? null : Number(e.target.value))}>
                 <option value="">Any level</option>
                 {SUPPORT_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </Select>
             )} />
-            <FormField name="to_level" label="To level" children={({ field }) => (
-              <Select {...field} value={field.value || ""} onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}>
+            <FormField name="to_level" label="To level (escalate to)" children={({ field }) => (
+              <Select {...field} value={field.value ?? ""} onChange={(e) => field.onChange(e.target.value === "" ? null : Number(e.target.value))}>
                 <option value="">Next level after current</option>
-                {SUPPORT_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+                {SUPPORT_LEVELS.filter((l) => l.value > 0).map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </Select>
             )} />
           </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { ShieldCheck, Lock, User, LogIn } from 'lucide-react';
+import { Lock, User, ArrowRight, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
@@ -28,90 +28,113 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-white-900 px-4 relative overflow-hidden">
-      {/* Background Ambient Gradients */}
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-brand-600/30 rounded-full blur-3xl" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl" />
-
-      {/* Main Glass Card */}
-      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl relative z-10 space-y-6">
-        {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl mx-auto overflow-hidden shadow-lg shadow-brand-500/30 border border-brand-800/50">
-            <img src="/logo.png" alt="IOE Pulchowk Campus" className="w-full h-full object-contain bg-brand-600" />
+    <div className="min-h-screen w-full flex flex-col md:flex-row bg-white antialiased font-sans">
+      
+      {/* Left/Top Panel: Dark Institutional Branding */}
+      <div className="md:w-[40%] flex flex-col justify-between p-8 md:p-16 bg-[#0f1626] border-b md:border-b-0 md:border-r border-slate-800/80 relative overflow-hidden shrink-0">
+        {/* Subtle geometric line pattern */}
+        <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px]" />
+        
+        {/* Header - Institution Identity */}
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="w-11 h-11 bg-white p-1 rounded-sm shadow-sm flex items-center justify-center">
+            <img src="/logo.png" alt="IOE Pulchowk Campus" className="w-full h-full object-contain" />
           </div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-950 text-brand-300 text-xs font-medium border border-brand-800/50">
-
-            <span>IOE Pulchowk Campus</span>
+          <div>
+            <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Institute of Engineering</p>
+            <h1 className="text-sm font-semibold text-white">Pulchowk Campus</h1>
           </div>
-          <h2 className="text-2xl font-extrabold text-white tracking-tight">
+        </div>
+
+        {/* Mid section text - Hero message */}
+        <div className="my-12 md:my-0 space-y-3 max-w-xs relative z-10">
+          <h2 className="text-xl font-light text-white tracking-tight leading-snug">
             Support Desk System
           </h2>
-          <p className="text-xs text-slate-400">
-            Enterprise Ticket Portal for Students, Faculty & Staff
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Central administration and technical ticket infrastructure for Students, Faculty, and Staff.
           </p>
         </div>
 
-        {error && (
-          <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs text-center font-medium">
-            {error}
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Username</label>
-            <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoFocus
-                placeholder="Campus Username"
-                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 active:bg-brand-700 text-white font-semibold text-xs transition-all shadow-md flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-            ) : (
-              <>
-                <LogIn className="w-4 h-4" />
-                <span>Sign In to Portal</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="pt-4 border-t border-slate-800/80 text-center text-[11px] text-slate-500 space-y-1">
-          <p>Pulchowk Engineering Campus Service Portal</p>
-
+        {/* Footer info inside the left layout */}
+        <div className="hidden md:block text-[10px] text-slate-500 tracking-wide">
+          &copy; {new Date().getFullYear()} IOE Pulchowk.
         </div>
       </div>
+
+      {/* Right/Bottom Panel: Stark White Functional Login Panel */}
+      <div className="flex-1 flex items-center justify-center p-8 md:p-16 bg-white">
+        <div className="w-full max-w-sm space-y-8">
+          
+          <div className="space-y-1.5">
+            <h3 className="text-lg font-semibold text-slate-900 tracking-tight">Account Authentication</h3>
+            <p className="text-xs text-slate-500">Provide your official campus credentials to access the portal.</p>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-3 p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-none">
+              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+              <span className="font-medium">{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold tracking-wider uppercase text-slate-500">Campus Username</label>
+              <div className="relative">
+                <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                  placeholder="e.g., pul077bct001"
+                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-none text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:bg-white transition-colors duration-150"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold tracking-wider uppercase text-slate-500">Password</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-none text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:bg-white transition-colors duration-150"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 py-3 bg-slate-900 hover:bg-slate-800 active:bg-black text-white font-medium text-xs rounded-none transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+              ) : (
+                <>
+                  <span>Sign In to Portal</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </form>
+
+         
+
+          {/* Mobile only footer */}
+          <div className="block md:hidden text-center text-[10px] text-slate-400 pt-4">
+            &copy; {new Date().getFullYear()} IOE Pulchowk Campus.
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

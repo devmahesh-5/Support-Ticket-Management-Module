@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "django_filters",
+    "django_apscheduler",
     "accounts",
     "tickets",
     "notifications",
@@ -118,3 +119,11 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "False").lower() == "true"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@ticket.pulchowk.edu")
+
+# --- SLA engine scheduler (django-apscheduler) ---
+# The scheduler runs as its own process: python manage.py run_sla_scheduler
+SLA_ENGINE_INTERVAL_SECONDS = int(os.getenv("SLA_ENGINE_INTERVAL_SECONDS", "60"))
+DJANGO_APSCHEDULER = {
+    # Keep at most one week of job execution history in django_apscheduler tables.
+    "DJANGO_APSCHEDULER_MAX_JOB_RUNS": 500,
+}

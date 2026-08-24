@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Send, X, CheckCircle2, HelpCircle, Upload } from 'lucide-react';
-import { ticketAPI, categoryAPI, userAPI } from '../api/client';
+import { ticketAPI, categoryAPI, departmentAPI, teamAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import FilePreview from './common/FilePreview';
 
@@ -14,19 +14,18 @@ const isImageName = (name = '') => IMAGE_EXTENSIONS.includes(name.split('.').pop
 export default function CreateTicketPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isStaff = ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
   const [categories, setCategories] = useState([]);
-  const [staffList, setStaffList] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [form, setForm] = useState({
-    title: '', 
-    description: '', 
-    category: '', 
-    priority: 'MEDIUM',
+    title: '',
+    description: '',
+    category: '',
     department: user?.department || '',
+    sub_department: '',
     is_class_level: user?.role === 'CR',
     class_section: user?.section || '',
     student_names: '',
-    assigned_to: '',
   });
   const [attachments, setAttachments] = useState([]);
   const [attachmentError, setAttachmentError] = useState('');
@@ -40,39 +39,35 @@ export default function CreateTicketPage() {
         setCategories(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!isStaff) return;
-    const params = form.department ? { department: form.department } : {};
-    userAPI.list(params)
+    departmentAPI.list()
       .then((res) => {
-        const data = res.data.results || res.data || [];
-        const assignable = Array.isArray(data)
-          ? data.filter((u) => ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(u.role))
-          : [];
-        setStaffList(assignable);
+        const data = res.data.results || res.data;
+        setDepartments(Array.isArray(data) ? data : []);
       })
       .catch(() => {});
-  }, [isStaff, form.department]);
+    teamAPI.list()
+      .then((res) => {
+        const data = res.data.results || res.data;
+        setTeams(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+  }, []);
 
-  const validForDept = (c) =>
-    !c.target_department || c.target_department === 'HOD' || c.target_department === form.department;
-
-  const visibleCategories = form.department
-    ? categories.filter(validForDept)
-    : categories;
+  // Teams of the currently selected department.
+  const visibleTeams = form.department
+    ? teams.filter((t) => t.department === form.department)
+    : teams;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => {
       const next = { ...prev, [name]: value };
-      if (name === 'department') {
-        const allowed = value ? categories.filter((c) =>
-          !c.target_department || c.target_department === 'HOD' || c.target_department === value
-        ) : categories;
-        if (!allowed.some((c) => c.id === prev.category)) next.category = '';
-        next.assigned_to = '';
+      if (name === 'department' && prev.sub_department) {
+        // Reset the team when the department changes.
+        const stillValid = teams.some(
+          (t) => String(t.id) === String(prev.sub_department) && t.department === value
+        );
+        if (!stillValid) next.sub_department = '';
       }
       return next;
     });
@@ -85,7 +80,7 @@ export default function CreateTicketPage() {
     try {
       const payload = {
         ...form,
-        assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+        sub_department: form.sub_department ? Number(form.sub_department) : null,
       };
       const res = await ticketAPI.create(payload);
 
@@ -179,11 +174,11 @@ export default function CreateTicketPage() {
             />
           </div>
 
-          {/* Department, Category & Priority Row */}
-          <div className={`grid grid-cols-1 ${isStaff ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-4`}>
+          {/* Department, Team & Category Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Target Department
+                Department <span className="text-rose-500">*</span>
               </label>
               <select
                 name="department"
@@ -193,27 +188,35 @@ export default function CreateTicketPage() {
                 className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Select Department...</option>
-                {[
-                  { code: 'CIV', name: 'Civil Engineering' },
-                  { code: 'ELE', name: 'Electrical Engineering' },
-                  { code: 'COM', name: 'Computer Engineering' },
-                  { code: 'MEC', name: 'Mechanical Engineering' },
-                  { code: 'ARC', name: 'Architecture' },
-                  { code: 'APP', name: 'Applied Sciences' },
-                  { code: 'CIT', name: 'IT Support' },
-                  { code: 'FIN', name: 'Finance Desk' },
-                  { code: 'ACA', name: 'Academic Affairs' },
-                  { code: 'LIB', name: 'Library' },
-                  { code: 'FAC', name: 'Facilities' },
-                ].map((d) => (
-                  <option key={d.code} value={d.code}>{d.name}</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.code}>{d.name}</option>
                 ))}
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Category <span className="text-rose-500">*</span>
+                Sub-department / Team
+              </label>
+              <select
+                name="sub_department"
+                value={form.sub_department || ''}
+                onChange={handleChange}
+                disabled={!form.department}
+                className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:text-slate-400"
+              >
+                <option value="">
+                  {form.department ? 'General (routes to HOD)' : 'Select a department first...'}
+                </option>
+                {visibleTeams.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Category
               </label>
               <select
                 name="category"
@@ -223,58 +226,16 @@ export default function CreateTicketPage() {
                 className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="">Select Category...</option>
-                {visibleCategories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
               </select>
             </div>
-
-            {isStaff && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Priority
-                </label>
-                <select
-                  name="priority"
-                  value={form.priority}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                  <option value="CRITICAL">Critical</option>
-                </select>
-              </div>
-            )}
           </div>
-
-          {/* Assign To (staff/admin only) */}
-          {isStaff && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Assign To
-              </label>
-              <select
-                name="assigned_to"
-                value={form.assigned_to}
-                onChange={handleChange}
-                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="">Auto-assign to Level 1 staff</option>
-                {staffList.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.full_name || u.username} ({u.role === 'DEPT_ADMIN' ? 'HOD' : u.role === 'CAMPUS_ADMIN' ? 'Admin' : u.department || 'Staff'})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-400 mt-1">Leave empty to route automatically to the available Level 1 staff.</p>
-            </div>
-          )}
 
           {/* Selected Category Estimated Time Banner */}
           {form.category && (() => {
-            const selectedCatObj = categories.find(c => String(c.id) === String(form.category));
+            const selectedCatObj = categories.find(c => c.name === form.category);
             if (!selectedCatObj) return null;
             return (
               <div className="p-3 bg-brand-50 rounded-xl border border-brand-200 flex items-center justify-between text-xs text-brand-800">

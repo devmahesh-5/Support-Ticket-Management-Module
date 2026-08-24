@@ -1,9 +1,19 @@
 from rest_framework import serializers
-from .models import Ticket, TicketMessage, StatusLog, Attachment, SystemSetting
+from .models import Ticket, TicketCategory, TicketMessage, StatusLog, Attachment, SystemSetting
 from accounts.serializers import UserSerializer
-from accounts.models import User
-from .routing import get_category_route
-from .categories import CATEGORIES
+from accounts.models import Department, SubDepartment, User
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketCategory
+        fields = [
+            "id", "name", "description",
+            "sla_response_hours", "sla_resolution_hours", "is_active",
+        ]
+
+    def validate_name(self, value):
+        return value.strip()
 
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {
@@ -140,6 +150,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
     status_logs = StatusLogSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
     target_department = serializers.SerializerMethodField()
+    sub_department_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -149,55 +160,73 @@ class TicketDetailSerializer(serializers.ModelSerializer):
         return obj.category or "Uncategorized"
 
     def get_target_department(self, obj):
-        route = get_category_route(obj.category)
-        if route and route["target_dept"] and route["target_dept"] != "HOD":
-            return route["target_dept"]
         return obj.department
+
+    def get_sub_department_detail(self, obj):
+        if not obj.sub_department_id:
+            return None
+        return {
+            "id": obj.sub_department_id,
+            "name": obj.sub_department.name,
+            "department": obj.sub_department.department,
+        }
 
 
 class TicketCreateSerializer(serializers.ModelSerializer):
     category = serializers.CharField(
         required=False, allow_blank=True, allow_null=True,
-        help_text="Hardcoded category name (see tickets.categories)",
+        help_text="Dynamic category name (decides SLA hours only)",
     )
-    assigned_to = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(),
-        required=False,
-        allow_null=True,
-        help_text="Optional assignee (staff/admin only). Ignored for non-staff creators.",
+    sub_department = serializers.PrimaryKeyRelatedField(
+        queryset=SubDepartment.objects.all(), required=False, allow_null=True,
+        help_text="Team the ticket belongs to - routes to this team's lead",
     )
 
     class Meta:
         model = Ticket
         fields = [
             "id", "ticket_id", "title", "description", "category", "priority",
-            "department", "is_class_level", "class_section", "student_names",
-            "assigned_to",
+            "department", "sub_department", "is_class_level", "class_section",
+            "student_names",
         ]
         read_only_fields = ["id", "ticket_id"]
-
-    def validate_assigned_to(self, value):
-        if value is None:
-            return value
-        if value.role not in [
-            "STAFF", "DEPT_ADMIN", "CAMPUS_ADMIN",
-        ]:
-            raise serializers.ValidationError("Assignee must be a staff member or admin")
-        return value
 
     def validate_category(self, value):
         if value in (None, ""):
             return value
-        if value not in CATEGORIES:
+        value = value.strip()
+        if not TicketCategory.objects.filter(name=value, is_active=True).exists():
             raise serializers.ValidationError("Unknown category.")
         return value
 
-    def create(self, validated_data):
+    def validate_department(self, value):
+        if value in (None, ""):
+            return None
+        value = value.strip().upper()
+        from accounts.models import Department
+        if not Department.objects.filter(code=value, is_active=True).exists():
+            raise serializers.ValidationError("Unknown department.")
+        return value
+
+    def validate(self, attrs):
+        # No direct assignment at creation for anyone: tickets always route
+        # to the responsible team lead (see routing.assign_ticket).
+        attrs.pop("assigned_to", None)
+        # Priority is never settable at creation - staff raise it afterwards.
+        attrs["priority"] = Ticket.Priority.MEDIUM
+
         user = self.context["request"].user
-        if user.role not in [
-            "STAFF", "DEPT_ADMIN", "CAMPUS_ADMIN",
-        ]:
-            validated_data.pop("assigned_to", None)
-            validated_data["priority"] = Ticket.Priority.MEDIUM
-        validated_data["created_by"] = user
+        department = attrs.get("department") or user.department
+        if not attrs.get("department") and department:
+            attrs["department"] = department
+        sub_department = attrs.get("sub_department")
+
+        if sub_department and department and str(sub_department.department) != str(department):
+            raise serializers.ValidationError(
+                {"sub_department": "Team must belong to the selected department."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        validated_data["created_by"] = self.context["request"].user
         return super().create(validated_data)

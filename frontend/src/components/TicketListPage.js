@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { 
-  Search, 
-  PlusCircle, 
-  Eye, 
-  Download, 
-  RefreshCw, 
-  ChevronLeft, 
+import {
+  Search,
+  PlusCircle,
+  Eye,
+  RefreshCw,
+  ChevronLeft,
   ChevronRight,
   ArrowUpDown,
   Ticket as TicketIcon
@@ -14,8 +13,9 @@ import {
 import { ticketAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import TicketQuickPreview from './TicketQuickPreview';
+import { STATUS_LABELS } from './escalations/constants';
 
-const STATUS_OPTIONS = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED', 'ESCALATED_L1', 'ESCALATED_L2'];
+const STATUS_OPTIONS = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REOPENED', 'ESCALATED_L1', 'ESCALATED_L2', 'ADMIN_REVIEW'];
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 const PAGE_SIZE = 10;
 
@@ -31,10 +31,13 @@ export default function TicketListPage() {
   const [previewTicketId, setPreviewTicketId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const isStaff = user?.role === 'STAFF';
+  const isStaff = ['STAFF', 'TEAM_LEAD'].includes(user?.role);
   const isAdmin = ['DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
+  const isTeamLead = user?.role === 'TEAM_LEAD';
   const isSupportStaff = isStaff || isAdmin;
-  const mineParam = searchParams.get('mine') || (isStaff ? 'assigned' : '');
+  // Team leads open on their team queue; regular staff on their own tickets.
+  const defaultMine = isTeamLead ? 'team' : user?.role === 'STAFF' ? 'assigned' : '';
+  const mineParam = searchParams.get('mine') ?? defaultMine;
   const statusParam = searchParams.get('status') || '';
   const priorityParam = searchParams.get('priority') || '';
   const overdueParam = searchParams.get('overdue');
@@ -78,28 +81,6 @@ export default function TicketListPage() {
       if (prev === `-${field}`) return field;
       return `-${field}`;
     });
-  };
-
-  const handleExportCSV = () => {
-    if (!tickets.length) return;
-    const headers = ['Ticket ID', 'Title', 'Category', 'Status', 'Priority', 'Assigned To', 'Updated At'];
-    const rows = tickets.map(t => [
-      t.ticket_id,
-      `"${t.title.replace(/"/g, '""')}"`,
-      t.category_name || 'General',
-      t.status,
-      t.priority,
-      t.assigned_to_name || 'Unassigned',
-      new Date(t.updated_at).toLocaleString()
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ticket_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -149,6 +130,7 @@ export default function TicketListPage() {
             )}
             {[
               { value: 'assigned', label: 'Assigned to me' },
+              ...(isTeamLead ? [{ value: 'team', label: 'My team' }] : []),
               { value: 'created', label: 'My created tickets' },
             ].map((tab) => (
               <button
@@ -171,13 +153,6 @@ export default function TicketListPage() {
         )}
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleExportCSV}
-            className="btn-secondary text-xs gap-1.5"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export CSV</span>
-          </button>
           <Link
             to="/tickets/new"
             className="btn-primary text-xs gap-1.5"
@@ -212,7 +187,7 @@ export default function TicketListPage() {
             >
               <option value="">All Statuses</option>
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                <option key={s} value={s}>{STATUS_LABELS[s] || s.replace('_', ' ')}</option>
               ))}
             </select>
           </div>
@@ -321,7 +296,7 @@ export default function TicketListPage() {
                           return (
                             <div className="flex items-center gap-1.5">
                               <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${color}`}>
-                                {t.status?.replace('_', ' ')}
+                                {STATUS_LABELS[t.status] || t.status?.replace('_', ' ')}
                               </span>
                               {t.sla_status === 'BREACHED' && (
                                 <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-rose-600 text-white">

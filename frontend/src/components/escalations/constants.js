@@ -20,9 +20,10 @@ export const PRIORITIES = [
 ];
 
 export const SUPPORT_LEVELS = [
-  { value: 1, label: "Level 1 - Staff (first line)" },
-  { value: 2, label: "Level 2 - Staff (second line)" },
-  { value: 3, label: "Level 3 - Department HOD" },
+  { value: 0, label: "Level 0 - Staff" },
+  { value: 1, label: "Level 1 - Team Lead" },
+  { value: 2, label: "Level 2 - Department HOD" },
+  { value: 3, label: "Level 3 - Campus Admin" },
 ];
 
 export const DELAY_PRESETS = [
@@ -62,9 +63,20 @@ export const RULE_ACTIONS = [
   { value: "escalate_now", label: "Escalate Now" },
   { value: "increase_priority", label: "Increase Priority" },
   { value: "assign_user", label: "Assign User" },
-  { value: "assign_level", label: "Assign Staff Level (1-3)" },
+  { value: "assign_level", label: "Assign Handler Level (0=Staff, 1=Team Lead, 2=HOD, 3=Campus Admin)" },
   { value: "add_to_escalation_queue", label: "Add To Escalation Queue" },
 ];
+
+export const STATUS_LABELS = {
+  OPEN: "Open",
+  IN_PROGRESS: "In Progress",
+  RESOLVED: "Resolved",
+  CLOSED: "Closed",
+  REOPENED: "Reopened",
+  ESCALATED_L1: "With Team Lead",
+  ESCALATED_L2: "With HOD",
+  ADMIN_REVIEW: "Admin Review",
+};
 
 export const SLA_STATUSES = [
   { value: "OK", label: "On Track", tone: "success" },

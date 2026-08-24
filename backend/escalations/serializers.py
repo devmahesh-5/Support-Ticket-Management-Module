@@ -20,9 +20,10 @@ RULE_OPS = {"eq", "neq", "gt", "gte", "lt", "lte", "in", "contains"}
 
 
 LEVEL_LABELS = {
-    1: "Level 1 (Staff)",
-    2: "Level 2 (Staff)",
-    3: "Level 3 (HOD)",
+    0: "Level 0 (Staff)",
+    1: "Level 1 (Team Lead)",
+    2: "Level 2 (Department HOD)",
+    3: "Level 3 (Campus Admin)",
 }
 
 
@@ -74,10 +75,10 @@ class EscalationPolicySerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_from_level_name(self, obj):
-        return LEVEL_LABELS.get(obj.from_level) if obj.from_level else None
+        return LEVEL_LABELS.get(obj.from_level) if obj.from_level is not None else None
 
     def get_to_level_name(self, obj):
-        return LEVEL_LABELS.get(obj.to_level) if obj.to_level else None
+        return LEVEL_LABELS.get(obj.to_level) if obj.to_level is not None else None
 
     def get_rules(self, obj):
         return EscalationRuleSerializer(obj.rules.all(), many=True).data
@@ -87,23 +88,9 @@ class EscalationPolicySerializer(serializers.ModelSerializer):
         from_level = attrs.get("from_level", getattr(instance, "from_level", None))
         to_level = attrs.get("to_level", getattr(instance, "to_level", None))
 
-        if from_level is not None and to_level is not None and from_level > to_level:
+        if from_level is not None and to_level is not None and from_level >= to_level:
             raise serializers.ValidationError(
-                "From level cannot be higher than the To level."
-            )
-
-        queryset = EscalationPolicy.objects.all()
-        if instance:
-            queryset = queryset.exclude(pk=instance.pk)
-
-        if from_level is not None and queryset.filter(from_level=from_level).exists():
-            raise serializers.ValidationError(
-                f"A policy already escalates from Level {from_level}."
-            )
-
-        if queryset.count() >= 2:
-            raise serializers.ValidationError(
-                "Only 2 escalation policies are allowed (one per level transition)."
+                "From level must be lower than the To level."
             )
 
         return attrs
@@ -146,7 +133,7 @@ class TicketAssignmentStageSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_level_label(self, obj):
-        return LEVEL_LABELS.get(obj.level) if obj.level else None
+        return LEVEL_LABELS.get(obj.level) if obj.level is not None else None
 
     def get_assigned_user_name(self, obj):
         if obj.assigned_user:

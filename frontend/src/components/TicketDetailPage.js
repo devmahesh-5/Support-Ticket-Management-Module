@@ -22,6 +22,7 @@ import {
 import { ticketAPI, userAPI, systemSettingAPI } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import FilePreview from './common/FilePreview';
+import { STATUS_LABELS } from './escalations/constants';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'zip'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -135,8 +136,9 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const isStaff = ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
+  const isStaff = ['STAFF', 'TEAM_LEAD', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
   const isAdmin = ['DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(user?.role);
+  const isTeamLead = user?.role === 'TEAM_LEAD';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -152,7 +154,7 @@ export default function TicketDetailPage() {
         setAllowTwoWay(settingRes.data.allow_two_way_escalation);
 
         if (isAdmin) {
-          const params = tData.target_department ? { department: tData.target_department } : {};
+          const params = tData.department ? { department: tData.department } : {};
           let list = tData.assigned_to ? [tData.assigned_to] : [];
           try {
             const usersRes = await userAPI.list(params);
@@ -164,6 +166,13 @@ export default function TicketDetailPage() {
           const seen = new Set();
           list = list.filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)));
           setUsers(list);
+        } else if (isTeamLead) {
+          // Team leads assign within their own team(s).
+          try {
+            const membersRes = await userAPI.teamMembers();
+            const members = membersRes.data.results || membersRes.data || [];
+            setUsers(Array.isArray(members) ? members : []);
+          } catch {}
         }
       } catch {} finally {
         setLoading(false);
@@ -331,20 +340,31 @@ export default function TicketDetailPage() {
   }
 
   const isCreator = user?.id === ticket.created_by?.id;
-  const isAssignedStaff = user?.role === 'STAFF' && ticket.assigned_to?.id === user.id;
+  const isAssignedStaff = ['STAFF', 'TEAM_LEAD'].includes(user?.role) && ticket.assigned_to?.id === user.id;
   const daysSinceClosed = ticket.closed_at
     ? (new Date() - new Date(ticket.closed_at)) / (1000 * 60 * 60 * 24)
     : 999;
+
+  // Hierarchy read-only rules (mirrors the backend):
+  // - a team lead gets a read-only view once the ticket reaches HOD level
+  // - a HOD gets a read-only view once the ticket reaches the campus admin
+  const ticketLevel = ticket.escalation_level || 0;
+  const readOnlyForViewer =
+    (user?.role === 'TEAM_LEAD' && ticketLevel >= 2) ||
+    (user?.role === 'DEPT_ADMIN' && ticketLevel >= 3);
+  const readOnlyMessage = user?.role === 'TEAM_LEAD'
+    ? 'This ticket has been escalated beyond your level - view only'
+    : 'This ticket is with the campus admin - read-only';
 
   const getStatusActions = () => {
     const actions = [];
     switch (ticket.status) {
       case 'OPEN':
-        if (isAssignedStaff) actions.push({ status: 'IN_PROGRESS', label: 'Start Working', btnClass: 'btn-primary' });
+        if (isAssignedStaff && !readOnlyForViewer) actions.push({ status: 'IN_PROGRESS', label: 'Start Working', btnClass: 'btn-primary' });
         if (isCreator) actions.push({ status: 'CLOSED', label: 'Close Ticket', btnClass: 'btn-secondary' });
         break;
       case 'IN_PROGRESS':
-        if (isAssignedStaff) actions.push({ status: 'RESOLVED', label: 'Mark Resolved', btnClass: 'btn-primary' });
+        if (isAssignedStaff && !readOnlyForViewer) actions.push({ status: 'RESOLVED', label: 'Mark Resolved', btnClass: 'btn-primary' });
         if (isCreator) actions.push({ status: 'CLOSED', label: 'Close Ticket', btnClass: 'btn-secondary' });
         break;
       case 'RESOLVED':
@@ -355,12 +375,12 @@ export default function TicketDetailPage() {
           actions.push({ status: 'REOPENED', label: 'Reopen Ticket', btnClass: 'btn-secondary' });
         break;
       case 'REOPENED':
-        if (isAssignedStaff) actions.push({ status: 'IN_PROGRESS', label: 'Start Working', btnClass: 'btn-primary' });
+        if (isAssignedStaff && !readOnlyForViewer) actions.push({ status: 'IN_PROGRESS', label: 'Start Working', btnClass: 'btn-primary' });
         break;
       case 'ESCALATED_L1':
       case 'ESCALATED_L2':
-        if (isAssignedStaff) actions.push({ status: 'IN_PROGRESS', label: 'Accept & Work', btnClass: 'btn-primary' });
-        if (isAdmin) actions.push({ status: 'RESOLVED', label: 'Resolve Directly', btnClass: 'btn-secondary' });
+        if (isAssignedStaff && !readOnlyForViewer) actions.push({ status: 'IN_PROGRESS', label: 'Accept & Work', btnClass: 'btn-primary' });
+        if (isAdmin && !readOnlyForViewer) actions.push({ status: 'RESOLVED', label: 'Resolve Directly', btnClass: 'btn-secondary' });
         break;
       default:
         break;
@@ -369,9 +389,9 @@ export default function TicketDetailPage() {
   };
 
   const statusActions = getStatusActions();
-  const canReassign = isAdmin;
-  const canEscalate = isStaff && ticket.escalation_level < 3 && !['RESOLVED', 'CLOSED'].includes(ticket.status);
-  const canDeescalate = isStaff && ticket.escalation_level > 0 && allowTwoWay && !['RESOLVED', 'CLOSED'].includes(ticket.status);
+  const canReassign = (isAdmin || isTeamLead) && !readOnlyForViewer;
+  const canEscalate = isStaff && !readOnlyForViewer && ticketLevel < 3 && !['RESOLVED', 'CLOSED'].includes(ticket.status);
+  const canDeescalate = isStaff && !readOnlyForViewer && ticketLevel > 0 && allowTwoWay && !['RESOLVED', 'CLOSED'].includes(ticket.status);
 
   return (
     <div className="space-y-6">
@@ -418,6 +438,14 @@ export default function TicketDetailPage() {
         </div>
       </div>
 
+      {/* Read-only notice for viewers below the current handler */}
+      {readOnlyForViewer && (
+        <div className="flex items-center gap-2 p-3 bg-slate-100 border border-slate-300 rounded-xl text-xs text-slate-600 font-medium">
+          <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+          <span>{readOnlyMessage}.</span>
+        </div>
+      )}
+
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* LEFT COLUMN: Ticket Title, Description, Conversation, Reply Input */}
@@ -441,7 +469,7 @@ export default function TicketDetailPage() {
                   ticket.status === 'RESOLVED' || ticket.status === 'CLOSED' ? 'bg-emerald-100 text-emerald-800' :
                   'bg-rose-100 text-rose-800'
                 }`}>
-                  {ticket.status?.replace('_', ' ')}
+                  {STATUS_LABELS[ticket.status] || ticket.status?.replace('_', ' ')}
                 </span>
                 {ticket.sla_status === 'BREACHED' && (
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-600 text-white">
@@ -654,7 +682,7 @@ export default function TicketDetailPage() {
                   {ticket.priority}
                 </span>
               </div>
-              {isStaff && (
+              {isStaff && !readOnlyForViewer && (
                 <form onSubmit={handlePrioritySubmit} className="flex gap-2 pt-1">
                   <select
                     className="flex-1 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
@@ -692,9 +720,9 @@ export default function TicketDetailPage() {
                     onChange={(e) => setSelectedStaff(e.target.value)}
                   >
                     <option value="">Unassigned</option>
-                    {users.filter(u => ['STAFF', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(u.role)).map(u => (
+                    {users.filter(u => ['STAFF', 'TEAM_LEAD', 'DEPT_ADMIN', 'CAMPUS_ADMIN'].includes(u.role)).map(u => (
                       <option key={u.id} value={u.id}>
-                        {u.full_name || u.username} ({u.role === 'DEPT_ADMIN' ? 'HOD' : u.role === 'CAMPUS_ADMIN' ? 'Admin' : `${u.role} - L${u.level || 1}`})
+                        {u.full_name || u.username} ({u.role === 'DEPT_ADMIN' ? 'HOD' : u.role === 'TEAM_LEAD' ? 'Team Lead' : u.role === 'CAMPUS_ADMIN' ? 'Admin' : 'Staff'})
                       </option>
                     ))}
                   </select>
@@ -725,7 +753,7 @@ export default function TicketDetailPage() {
           {isStaff && (
             <div className="custom-card p-5">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                Status Change History (Staff Only)
+                Ticket Tracking
               </h3>
               <div className="space-y-3 max-h-60 overflow-y-auto">
                 {ticket.status_logs?.map((log, i) => (

@@ -110,7 +110,7 @@ def main():
                       f"temporarily broadening '{policy.name}' for the test.")
                 for field in ("department", "category", "priority"):
                     setattr(policy, field, None)
-                policy.from_level = 1
+                policy.from_level = 0  # tickets handled at staff level (0)
             else:
                 policy = governing
                 print(f"\n  matched policy: {policy.name}")
