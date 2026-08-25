@@ -331,8 +331,8 @@ class TicketViewSet(viewsets.ModelViewSet):
         is_staff = user.role in User.support_roles()
 
         # Hierarchy read-only rules:
-        # - a team lead cannot touch tickets handled at/above HOD level
-        # - a HOD cannot touch tickets handed to the campus admin
+        # a team lead cannot touch tickets handled at/above HOD level
+        # a HOD cannot touch tickets handed to the campus admin
         level = ticket.escalation_level or 0
         if user.role == User.Role.TEAM_LEAD and level >= HOD_LEVEL:
             return Response(
