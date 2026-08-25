@@ -85,10 +85,6 @@ export const notificationAPI = {
   unreadCount: () => api.get("/notifications/unread_count/"),
   markRead: (id) => api.post(`/notifications/${id}/mark_read/`),
   markAllRead: () => api.post("/notifications/mark_all_read/"),
-  settings: {
-    list: () => api.get("/notifications/settings/"),
-    update: (id, data) => api.patch(`/notifications/settings/${id}/`, data),
-  },
 };
 
 export const escalationAPI = {

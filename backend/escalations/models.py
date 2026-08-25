@@ -85,20 +85,10 @@ class EscalationPolicy(TimeStampedModel):
         help_text="Escalate tickets to this staff level (blank = next level after current)",
     )
 
-    # Notifications
-    notify_assigned_50 = models.BooleanField(default=True)
-    notify_assigned_75 = models.BooleanField(default=True)
-    notify_assigned_custom = models.BooleanField(default=False)
-    notify_assigned_custom_pct = models.PositiveSmallIntegerField(blank=True, null=True, help_text="1-99")
-    notify_manager_50 = models.BooleanField(default=False)
-    notify_manager_75 = models.BooleanField(default=True)
-    notify_manager_90 = models.BooleanField(default=False)
-    notify_manager_100 = models.BooleanField(default=False)
-    notify_manager_custom = models.BooleanField(default=False)
-    notify_manager_custom_pct = models.PositiveSmallIntegerField(blank=True, null=True, help_text="1-99")
-    notify_in_app = models.BooleanField(default=True)
-    notify_email = models.BooleanField(default=False)
-    notify_sms = models.BooleanField(default=False, help_text="SMS support (future ready)")
+    # Notifications are not configurable: every SLA warning and escalation
+    # notice always goes out via in-app + email. Warnings fire to the assignee
+    # at 50/75/90% of the resolution SLA and, on breach (100%), also to the
+    # team lead and the department HOD.
 
     # Auto escalation on SLA breach: if ON the ticket escalates to the
     # `to_level` staff; if OFF it is pushed to the escalation queue for the

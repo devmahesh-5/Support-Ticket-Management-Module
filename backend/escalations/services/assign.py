@@ -12,7 +12,7 @@ from tickets.models import StatusLog, Ticket
 from tickets.routing import least_loaded_staff
 
 from ..models import EscalationHistory, EscalationPolicy, SupportQueue, TicketAssignmentStage
-from .notify import METHOD_IN_APP, notify_user, policy_methods
+from notifications.services import notify_user
 
 ESCALATED_STATUSES = [
     Ticket.Status.ESCALATED_L1,
@@ -95,15 +95,15 @@ def resolve_assignee(level=None, queue=None, department=None, user=None, ticket=
         if level >= CAMPUS_ADMIN_LEVEL:
             assignee = User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
         elif level >= HOD_LEVEL:
-            assignee = _department_hod(ticket)
+            assignee = department_hod_for_ticket(ticket)
         elif level >= TEAM_LEAD_LEVEL:
-            assignee = _team_lead(ticket)
+            assignee = team_lead_for_ticket(ticket)
             if assignee is None:
-                assignee = _department_hod(ticket)
+                assignee = department_hod_for_ticket(ticket)
         else:
             assignee = _team_member(ticket)
             if assignee is None:
-                assignee = _team_lead(ticket)
+                assignee = team_lead_for_ticket(ticket)
         if assignee:
             return assignee
     if queue:
@@ -147,7 +147,7 @@ def _handling_team(ticket):
     return ticket.sub_department
 
 
-def _department_hod(ticket):
+def department_hod_for_ticket(ticket):
     """The HOD (DEPT_ADMIN) for the department handling the ticket, else a
     campus admin."""
     dept = _target_department(ticket)
@@ -160,7 +160,7 @@ def _department_hod(ticket):
     return User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
 
 
-def _team_lead(ticket):
+def team_lead_for_ticket(ticket):
     """The team lead of the ticket's handling team. Returns None when there is
     no team, no lead or the lead is inactive/unavailable so callers can fall
     through to the HOD."""
@@ -254,7 +254,6 @@ def escalate_ticket(ticket, policy=None, level=None, queue=None, user=None, depa
         )
     _notify_escalation(
         ticket, assignee=assignee, previous_assignee=previous_assignee,
-        methods=policy_methods(policy) if policy else [METHOD_IN_APP],
         message=note or f"Escalated to level {ticket.escalation_level}",
     )
     return assignee
@@ -353,22 +352,17 @@ def deescalate_ticket(ticket, policy=None, level=None, actor=None, note="", now=
         )
     _notify_escalation(
         ticket, assignee=assignee,
-        methods=policy_methods(policy) if policy else [METHOD_IN_APP],
         message=note or f"De-escalated to level {ticket.escalation_level}",
         title="Ticket de-escalated to you",
     )
     return assignee
 
 
-def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, message="", title="Ticket escalated to you"):
+def _notify_escalation(ticket, assignee, previous_assignee=None, message="", title="Ticket escalated to you"):
     """Dispatch real-time escalation notifications.
 
-    Channels come from the governing escalation policy (in-app / email / SMS
-    toggles); when no policy governs the hop we fall back to in-app only (the
-    previous default behaviour). Recipients: the new assignee, the previous
-    assignee (if any) and the ticket creator."""
-    methods = methods or [METHOD_IN_APP]
-
+    Every notification goes out via in-app + email. Recipients: the new
+    assignee, the previous assignee (if any) and the ticket creator."""
     notified = set()
     if assignee:
         notified.add(assignee.id)
@@ -378,7 +372,6 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
             message=f"Ticket '{ticket.title}' - {message}",
             ticket=ticket,
             notification_type="ESCALATION",
-            methods=methods,
         )
     if previous_assignee and previous_assignee.id not in notified:
         notified.add(previous_assignee.id)
@@ -388,7 +381,6 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
             message=f"Ticket '{ticket.title}' - {message}",
             ticket=ticket,
             notification_type="ESCALATION",
-            methods=methods,
         )
     creator = ticket.created_by
     if creator and creator.id not in notified and creator != previous_assignee:
@@ -398,7 +390,6 @@ def _notify_escalation(ticket, assignee, previous_assignee=None, methods=None, m
             message=f"Ticket '{ticket.title}' - {message}",
             ticket=ticket,
             notification_type="ESCALATION",
-            methods=methods,
         )
 
 
@@ -458,9 +449,8 @@ def add_to_escalation_queue(ticket, policy=None, actor=None, now=None):
         details={"assignee": None},
     )
 
-    methods = policy_methods(policy) if policy else [METHOD_IN_APP]
     recipients = set()
-    manager = _department_hod(ticket)
+    manager = department_hod_for_ticket(ticket)
     if manager:
         recipients.add(manager)
     if ticket.created_by:
@@ -472,6 +462,5 @@ def add_to_escalation_queue(ticket, policy=None, actor=None, now=None):
             message=f"Ticket '{ticket.title}' breached its SLA and needs attention in the escalation queue.",
             ticket=ticket,
             notification_type="ESCALATION",
-            methods=methods,
         )
     return queue

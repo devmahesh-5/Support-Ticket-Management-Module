@@ -25,7 +25,7 @@ from escalations.services.assign import (
 )
 from accounts.models import User
 from notifications.models import Notification
-from notifications.services import METHOD_EMAIL, METHOD_IN_APP, notify_user
+from notifications.services import notify_user
 
 
 class TicketFilter(FilterSet):
@@ -206,7 +206,6 @@ class TicketViewSet(viewsets.ModelViewSet):
                 message=f"Ticket '{ticket.title}' has been assigned to you.",
                 ticket=ticket,
                 notification_type="ASSIGNMENT",
-                methods=[METHOD_IN_APP, METHOD_EMAIL],
             )
 
     @action(detail=True, methods=["post"])
@@ -259,7 +258,6 @@ class TicketViewSet(viewsets.ModelViewSet):
                     message=f"Reply on '{ticket.title}' from {author_name}: {excerpt}",
                     ticket=ticket,
                     notification_type="REPLY",
-                    methods=[METHOD_IN_APP, METHOD_EMAIL],
                 )
 
         return Response(TicketMessageSerializer(message, context={"request": request}).data)
@@ -402,7 +400,6 @@ class TicketViewSet(viewsets.ModelViewSet):
             message=f"Ticket '{ticket.title}' status changed to {new_status}.",
             ticket=ticket,
             notification_type="STATUS_CHANGE",
-            methods=[METHOD_IN_APP, METHOD_EMAIL],
         )
 
         return Response(TicketDetailSerializer(ticket, context={"request": request}).data)
@@ -449,7 +446,6 @@ class TicketViewSet(viewsets.ModelViewSet):
             message=f"Ticket '{ticket.title}' has been reassigned to you.",
             ticket=ticket,
             notification_type="REASSIGNMENT",
-            methods=[METHOD_IN_APP, METHOD_EMAIL],
         )
 
         return Response(TicketDetailSerializer(ticket, context={"request": request}).data)

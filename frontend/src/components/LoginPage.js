@@ -89,7 +89,7 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   required
                   autoFocus
-                  placeholder="e.g., pul077bct001"
+                  placeholder="e.g., pul080bct0400"
                   className="w-full pl-10 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-none text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 focus:bg-white transition-colors duration-150"
                 />
               </div>

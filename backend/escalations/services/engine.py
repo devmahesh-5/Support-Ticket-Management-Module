@@ -11,10 +11,11 @@ from django.utils import timezone
 
 from tickets.models import StatusLog, Ticket, get_category_sla
 
+from notifications.services import notify_user
+
 from ..models import EscalationHistory, EscalationPolicy, EscalationRule
 from . import assign as assign_svc
 from .audit import already_logged, log
-from .notify import notify_user, policy_methods
 from .policies import attach_policy
 
 ACTIVE_STATUSES = [
@@ -54,20 +55,21 @@ def run_engine(ticket_ids=None, now=None):
 
 
 def evaluate_ticket(ticket, now=None):
-    """Evaluate a single ticket against its policy and rules."""
+    """Evaluate a single ticket against its policy and rules.
+
+    SLA monitoring (deadlines, breach detection, threshold warnings) runs for
+    EVERY active ticket from its category's SLA hours - a governing policy is
+    only required for the escalation actions (auto escalate, rules, priority
+    bump). Breached tickets without a policy are parked in the escalation
+    queue so the HOD/admin can act on them.
+    """
     now = now or timezone.now()
 
     policy = attach_policy(ticket, now=now)
-    if policy is None:
-        # No policy governs the current staff level. If the ticket already
-        # entered the escalation chain and the SLA is still breached, keep
-        # stepping upward (e.g. HOD -> campus admin) until the chain ends.
-        _auto_step_when_breached(ticket, now)
-        return
 
-    ensure_deadlines(ticket, policy, now)
+    ensure_deadlines(ticket, now=now)
 
-    resp_breached, res_breached, res_pct = _sla_progress(ticket, policy, now)
+    resp_breached, res_breached, res_pct = _sla_progress(ticket, now)
     breached = resp_breached or res_breached
 
     if breached and not ticket.sla_breached_at:
@@ -83,7 +85,7 @@ def evaluate_ticket(ticket, now=None):
     elif not breached:
         # Only recompute the status when the SLA is no longer breached; a
         # breached ticket stays BREACHED until it is resolved/closed.
-        approaching_pct = _approaching_threshold(policy)
+        approaching_pct = _approaching_threshold()
         if res_pct is not None and res_pct >= approaching_pct:
             ticket.sla_status = TicketSLAStatus.APPROACHING
         else:
@@ -94,7 +96,15 @@ def evaluate_ticket(ticket, now=None):
         "escalation_policy", "last_activity_at", "updated_at",
     ])
 
-    _notify_thresholds(ticket, policy, now, res_pct)
+    _notify_thresholds(ticket, res_pct)
+
+    if policy is None:
+        # No escalation policy governs this ticket: SLA monitoring above
+        # still ran. On breach the only sensible action is to park the
+        # ticket in the escalation queue for manual handling.
+        if breached:
+            _auto_step_when_breached(ticket, now)
+        return
 
     if policy.escalate_critical_immediately and ticket.priority == Ticket.Priority.CRITICAL:
         if ticket.escalation_level == 0 and not already_logged(ticket, "critical:immediate"):
@@ -140,7 +150,7 @@ def _category_sla_hours(ticket):
     return get_category_sla(ticket.category)
 
 
-def ensure_deadlines(ticket, policy, now=None):
+def ensure_deadlines(ticket, now=None):
     """Compute response/resolution deadlines from the category if not yet set."""
     now = now or timezone.now()
     resp_hours, res_hours = _category_sla_hours(ticket)
@@ -170,7 +180,7 @@ class TicketSLAStatus:
     BREACHED = "BREACHED"
 
 
-def _sla_progress(ticket, policy, now):
+def _sla_progress(ticket, now):
     """Return (response_breached, resolution_breached, resolution_pct)."""
 
     resp_breached = bool(
@@ -191,68 +201,39 @@ def _sla_progress(ticket, policy, now):
     return resp_breached, res_breached, res_pct
 
 
-def _approaching_threshold(policy):
-    thresholds = []
-    for enabled, pct in [
-        (policy.notify_assigned_50, 50),
-        (policy.notify_assigned_75, 75),
-        (policy.notify_assigned_custom, policy.notify_assigned_custom_pct),
-        (policy.notify_manager_50, 50),
-        (policy.notify_manager_75, 75),
-        (policy.notify_manager_90, 90),
-        (policy.notify_manager_100, 100),
-        (policy.notify_manager_custom, policy.notify_manager_custom_pct),
-    ]:
-        if enabled and pct and pct < 100:
-            thresholds.append(pct)
-    return min(thresholds) if thresholds else 80
+def _approaching_threshold():
+    """SLA progress at which a ticket is flagged APPROACHING (first warning)."""
+    return 50
 
 
-def _notify_thresholds(ticket, policy, now, res_pct):
+def _notify_thresholds(ticket, res_pct):
+    """Fixed SLA warnings: assignee at 50/75/90%; on breach (100%) the
+    assignee plus the team lead and department HOD are notified."""
     if res_pct is None:
         return
-    methods = policy_methods(policy)
 
-    assigned_thresholds = []
-    for enabled, pct in [
-        (policy.notify_assigned_50, 50),
-        (policy.notify_assigned_75, 75),
-        (policy.notify_assigned_custom, policy.notify_assigned_custom_pct),
-    ]:
-        if enabled and pct:
-            assigned_thresholds.append(pct)
-
-    manager_thresholds = []
-    for enabled, pct in [
-        (policy.notify_manager_50, 50),
-        (policy.notify_manager_75, 75),
-        (policy.notify_manager_90, 90),
-        (policy.notify_manager_100, 100),
-        (policy.notify_manager_custom, policy.notify_manager_custom_pct),
-    ]:
-        if enabled and pct:
-            manager_thresholds.append(pct)
-
-    if ticket.assigned_to:
-        for pct in sorted(assigned_thresholds):
+    for pct in (50, 75, 90, 100):
+        if ticket.assigned_to and res_pct >= pct:
             key = f"notify:assigned:{pct}"
-            if res_pct >= pct and not already_logged(ticket, key):
+            if not already_logged(ticket, key):
                 _send_threshold_notification(
-                    ticket, policy, ticket.assigned_to, pct, "assigned", key, methods
+                    ticket, ticket.assigned_to, pct, "assigned", key
                 )
 
-    manager = _manager_for(ticket)
-    if manager:
-        for pct in sorted(manager_thresholds):
-            key = f"notify:manager:{pct}"
-            if res_pct >= pct and not already_logged(ticket, key):
-                _send_threshold_notification(
-                    ticket, policy, manager, pct, "manager", key, methods
-                )
+    if res_pct >= 100:
+        recipients = (
+            (assign_svc.team_lead_for_ticket(ticket), "team_lead"),
+            (assign_svc.department_hod_for_ticket(ticket), "hod"),
+        )
+        for user, role in recipients:
+            if not user:
+                continue
+            key = f"notify:{role}:100"
+            if not already_logged(ticket, key):
+                _send_threshold_notification(ticket, user, 100, role, key)
 
 
-def _send_threshold_notification(ticket, policy, user, pct, role, key, methods):
-    from accounts.models import User
+def _send_threshold_notification(ticket, user, pct, role, key):
     dispatched = notify_user(
         user=user,
         title=f"SLA {pct}% reached - {ticket.ticket_id}",
@@ -263,27 +244,14 @@ def _send_threshold_notification(ticket, policy, user, pct, role, key, methods):
         ),
         ticket=ticket,
         notification_type="DEADLINE_WARNING",
-        methods=methods,
     )
     log(
         ticket=ticket, action=EscalationHistory.Action.NOTIFICATION_SENT,
-        policy=policy,
+        policy=ticket.escalation_policy,
         message=f"SLA {pct}% notification sent to {role} ({user.get_full_name() or user.username})",
         details={"role": role, "pct": pct, "user": user.username, "methods": dispatched},
         key=key,
     )
-
-
-def _manager_for(ticket):
-    from accounts.models import User
-    dept = ticket.department
-    if dept:
-        manager = User.objects.filter(
-            role=User.Role.DEPT_ADMIN, department=dept
-        ).first()
-        if manager:
-            return manager
-    return User.objects.filter(role=User.Role.CAMPUS_ADMIN).first()
 
 
 def _apply_priority_mapping(ticket, policy):
@@ -466,13 +434,9 @@ def _execute_rule_actions(rule, ticket, now):
 
 
 def _rule_notify(rule, ticket, action):
-    from .notify import METHOD_IN_APP
-    from accounts.models import User
-
     target = action.get("target", "assigned")
     message = action.get("message") or f"Rule '{rule.name}' triggered on {ticket.ticket_id}"
     policy = ticket.escalation_policy
-    methods = policy_methods(policy) if policy else [METHOD_IN_APP]
 
     user = None
     if target == "assigned":
@@ -480,13 +444,13 @@ def _rule_notify(rule, ticket, action):
     elif target == "creator":
         user = ticket.created_by
     elif target == "manager":
-        user = _manager_for(ticket)
+        user = assign_svc.department_hod_for_ticket(ticket)
 
     if user:
         notify_user(
             user=user, title=f"Rule triggered - {ticket.ticket_id}",
             message=message, ticket=ticket,
-            notification_type="ESCALATION", methods=methods,
+            notification_type="ESCALATION",
         )
         log(
             ticket=ticket, action=EscalationHistory.Action.NOTIFICATION_SENT,

@@ -206,7 +206,7 @@ export default function CreateTicketPage() {
                 className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:text-slate-400"
               >
                 <option value="">
-                  {form.department ? 'General (routes to HOD)' : 'Select a department first...'}
+                  {form.department ? 'General' : 'Select a department first...'}
                 </option>
                 {visibleTeams.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>

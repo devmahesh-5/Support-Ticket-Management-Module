@@ -20,7 +20,7 @@ Run from the backend directory:
 """
 
 import os
-import sys
+import sys+
 import django
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -117,10 +117,8 @@ def main():
 
             # Auto-escalation must be ON for the breach action to reassign.
             policy.auto_escalate = True
-            policy.notify_email = False
-            policy.notify_sms = False
             policy.save(update_fields=[
-                "auto_escalate", "notify_email", "notify_sms",
+                "auto_escalate",
                 "department", "category", "priority", "from_level",
             ])
 

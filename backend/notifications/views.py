@@ -3,18 +3,12 @@ import time
 
 from django.db import close_old_connections
 from django.http import StreamingHttpResponse
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from tickets.views import IsStaffOrAdmin
-
-from .models import Notification, NotificationSetting, NotificationTemplate
-from .serializers import (
-    NotificationSerializer,
-    NotificationSettingSerializer,
-    NotificationTemplateSerializer,
-)
+from .models import Notification
+from .serializers import NotificationSerializer
 
 
 def notification_stream(request):
@@ -86,21 +80,3 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
     def unread_count(self, request):
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({"unread_count": count})
-
-
-class NotificationTemplateViewSet(viewsets.ModelViewSet):
-    queryset = NotificationTemplate.objects.all()
-    serializer_class = NotificationTemplateSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-
-class NotificationSettingViewSet(viewsets.ModelViewSet):
-    """Per-notification-type channel toggles (email on/off). In-App is always on.
-
-    Admin/HOD/staff can flip the email switch for each type; the dispatcher
-    in ``escalations.services.notify`` honors these settings.
-    """
-
-    queryset = NotificationSetting.objects.all()
-    serializer_class = NotificationSettingSerializer
-    permission_classes = [permissions.IsAuthenticated, IsStaffOrAdmin]
