@@ -12,6 +12,19 @@ if not SECRET_KEY:
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+# Trust the HTTPS protocol forwarded by Traefik -> Nginx -> Gunicorn.
+# When DEBUG=False the app runs behind HTTPS, so Django must honour the
+# X-Forwarded-Proto: https header sent by the reverse proxies.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+if DEBUG:
+    SECURE_SSL_REDIRECT = False
+
+# Cookies over HTTPS. In production (DEBUG=False) require a secure
+# connection for the session and CSRF cookies. Allow opting out via
+# environment for local HTTPS-proxied setups if ever needed.
+CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", str(not DEBUG).lower()) == "true"
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", str(not DEBUG).lower()) == "true"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

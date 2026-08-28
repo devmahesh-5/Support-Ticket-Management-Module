@@ -67,144 +67,29 @@ COPY --from=frontend-build /app/build /var/www/html
 
 
 ############################
-# Nginx configuration
+# Deployment assets
 ############################
-COPY <<'EOF' /etc/nginx/conf.d/app.conf
-
-server {
-    listen 80;
-    server_name _;
-
-    root /var/www/html;
-    index index.html;
-
-    client_max_body_size 25M;
-
-    gzip on;
-    gzip_types
-        text/css
-        application/javascript
-        application/json
-        image/svg+xml;
-
-    gzip_min_length 1024;
+COPY deploy/nginx.conf /etc/nginx/conf.d/app.conf
+COPY deploy/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 
-    ############################
-    # React frontend
-    ############################
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-
-    ############################
-    # React static assets
-    ############################
-
-    location /static/ {
-        alias /var/www/html/static/;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-        try_files $uri =404;
-    }
-
-
-    ############################
-    # Django static files
-    ############################
-
-    location /static/admin/ {
-        alias /app/staticfiles/admin/;
-        expires 30d;
-    }
-
-    location /static/rest_framework/ {
-        alias /app/staticfiles/rest_framework/;
-        expires 30d;
-    }
-
-
-    ############################
-    # Django media/uploads
-    ############################
-
-    location /media/ {
-        alias /app/media/;
-        expires 7d;
-    }
-
-
-    ############################
-    # Django API
-    ############################
-
-    location /api/ {
-
-        proxy_pass http://127.0.0.1:8000;
-
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_set_header Connection "";
-
-        # SSE
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 3600s;
-    }
-
-
-    ############################
-    # Django Admin
-    ############################
-
-    location /admin/ {
-
-        proxy_pass http://127.0.0.1:8000;
-
-        proxy_http_version 1.1;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-
-    ############################
-    # Health check
-    ############################
-
-    location = /healthz {
-
-        access_log off;
-
-        default_type text/plain;
-
-        return 200 "ok\n";
-    }
-}
-
-EOF
+############################
+# Directories expected by Nginx/Django (must exist for static/media collection)
+############################
+RUN mkdir -p /app/media /app/staticfiles
 
 
 ############################
 # Port
 ############################
-
+# Only Nginx is public; Gunicorn stays bound to 127.0.0.1:8000 and is not exposed.
 EXPOSE 80
 
 
 ############################
 # Health check
 ############################
-
 HEALTHCHECK \
     --interval=30s \
     --timeout=5s \
@@ -216,23 +101,4 @@ HEALTHCHECK \
 ############################
 # Startup
 ############################
-
-CMD ["sh", "-c", "\
-set -e; \
-echo 'Running migrations...'; \
-python manage.py migrate --noinput; \
-echo 'Collecting static files...'; \
-python manage.py collectstatic --noinput; \
-echo 'Creating superuser if needed...'; \
-python manage.py createsuperuser --noinput || true; \
-echo 'Starting Gunicorn...'; \
-gunicorn config.wsgi:application \
-    --bind 127.0.0.1:8000 \
-    --workers ${GUNICORN_WORKERS:-3} \
-    --threads ${GUNICORN_THREADS:-2} \
-    --timeout ${GUNICORN_TIMEOUT:-120} \
-    --access-logfile - \
-    --error-logfile - & \
-echo 'Starting Nginx...'; \
-exec nginx -g 'daemon off;' \
-"]
+ENTRYPOINT ["/app/entrypoint.sh"]
