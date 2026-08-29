@@ -13,7 +13,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 _ALLOWED_HOSTS_RAW = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 ALLOWED_HOSTS = [h.strip() for h in _ALLOWED_HOSTS_RAW.split(",") if h.strip()]
 
-# Trust the HTTPS protocol forwarded by Traefik -> Nginx -> Gunicorn.
+# Trust the HTTPS protocol forwarded by Traefik -> Gunicorn.
 # When DEBUG=False the app runs behind HTTPS, so Django must honour the
 # X-Forwarded-Proto: https header sent by the reverse proxies.
 # Only trust the header when the reverse proxy actually sets it; this is what
@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
@@ -86,6 +87,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -135,10 +137,17 @@ TIME_ZONE = "Asia/Kathmandu"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# React production build (copied into the container at /app/frontend_build).
+# WhiteNoise serves the app's own files at the site root (logo.png, index.html)
+# and the /static/ assets (collected from the build) alongside Django's.
+FRONTEND_BUILD_DIR = BASE_DIR / "frontend_build"
+STATICFILES_DIRS = [FRONTEND_BUILD_DIR / "static"]
+WHITENOISE_ROOT = FRONTEND_BUILD_DIR
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

@@ -235,15 +235,30 @@ python manage.py migrate
 
 ### Step 3: Seed Data
 
-Run this to create the admin, HODs, **team leads + teams**, staff members, and students:
+Run this to create the departments, categories, teams, the **Campus Admin**,
+HODs, **team leads + teams**, staff members, and students:
 
 ```bash
 python manage.py seed
 ```
 
-Every seeded user gets the password **`pass@123`** (override with `python manage.py seed --password <pw>`).
+The Campus Administrator is the account that owns/adminers the system. To keep
+credentials out of the codebase, seed it from the environment:
 
-The seed creates teams (Lab / Academic per academic department, plus specialty teams for CIT/FIN/ACA/LIB/FAC) with a team lead on each.
+```bash
+export ADMIN_EMAIL=admin@gmail.com
+export ADMIN_PASSWORD=pass@321      # or ADMIN_USERNAME=admin
+python manage.py seed
+```
+
+If `ADMIN_EMAIL` / `ADMIN_PASSWORD` are not set, the seed still creates a
+`admin` account using the `--password` flag (default `pass@123`).
+
+Every **other** seeded user gets the common demo password **`pass@123`**
+(override with `python manage.py seed --password <pw>`).
+
+The seed creates teams (Lab / Academic per academic department, plus specialty
+teams for CIT/FIN/ACA/LIB/FAC) with a team lead on each.
 
 ### Step 4: Run Backend Server
 
@@ -292,13 +307,136 @@ Frontend UI will be available at **http://localhost:3000**
 
 ---
 
+## Deploying on Coolify (production)
+
+The included `Dockerfile` builds the whole app in one step: React frontend
+**and** Django backend (API, admin and SPA) are all served by a single Gunicorn
+container on port `8000`. No Nginx, no separate entrypoint script. Traefik
+(Coolify's proxy) terminates TLS and forwards to Gunicorn.
+
+### 1. Add a "Dockerfile" application in Coolify
+
+1. **Sources** → add your Git repo (with this `Dockerfile` at the root).
+2. Set the **Build Pack** to `Dockerfile` (the repo's root `Dockerfile`).
+3. Set a **Ports Exposes** value of `8000`.
+4. Add a **Domain** (e.g. `tickets.example.com`). Coolify will route HTTPS
+   traffic to the container on port 8000 and set `X-Forwarded-Proto: https`.
+
+### 2. Required environment variables
+
+Add these under the app's **Environment Variables** (Storable env so they
+persist across deployments). Point them at a **PostgreSQL database** you add
+as a separate resource (see next step).
+
+```bash
+# Core Django
+DJANGO_SECRET_KEY=change-me-to-a-long-random-string
+DEBUG=false
+DJANGO_ALLOWED_HOSTS=tickets.example.com          # your real domain
+
+# Database (match your Coolify Postgres service)
+DB_NAME=support_ticket
+DB_USER=<db user>
+DB_PASSWORD=<db password>
+DB_HOST=<postgres service host>, e.g. postgres
+DB_PORT=5432
+
+# CSRF / admin login fix (IMPORTANT - see below)
+CSRF_TRUSTED_ORIGINS=https://tickets.example.com
+
+# Admin user seeded on every deploy (idempotent)
+ADMIN_EMAIL=admin@gmail.com
+ADMIN_PASSWORD=pass@321
+ADMIN_USERNAME=admin                          # optional; defaults to email local-part
+
+# Optional
+ALLOWED_HOSTS=                                # prefer DJANGO_ALLOWED_HOSTS
+GUNICORN_WORKERS=3                            # default 3
+GUNICORN_THREADS=2                            # default 2
+SEED_PASSWORD=pass@123                        # demo password for role users (not the admin)
+```
+
+> **Note:** the settings read `ALLOWED_HOSTS` (also aliased by `DJANGO_ALLOWED_HOSTS`).
+> Set it to your **actual domain**, not `*`, so CSRF origins can be derived.
+
+### 3. Add a Postgres database resource
+
+Use Coolify's **Databases → New** to create a **PostgreSQL** service, then put
+its host/user/password into the app's env vars above. The migration step in the
+   container's startup command will create all tables automatically.
+
+### 4. Deploy
+
+Hit **Deploy**. The container's startup command runs, in order:
+
+1. `python manage.py migrate` (creates the schema — the DB must be
+   reachable before the app starts).
+2. Collect static files.
+3. Seed the admin user from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (via
+   `ensure_superuser`, idempotent — safe on redeploys).
+4. Seed the role data (departments, teams, categories, HODs, team leads,
+   staff, students) via `seed`. The Campus Administrator in that seed is the
+   same `ADMIN_EMAIL` / `ADMIN_PASSWORD` account — no hardcoded credentials.
+5. Start the SLA scheduler + Gunicorn (serving Django, admin and React).
+
+### 5. Confirm it's up
+
+- Open your domain → the React app loads.
+- `GET <domain>/healthz` returns `ok`.
+- Django admin is at `<domain>/admin/` — log in with `admin@gmail.com` /
+  `pass@321` (or whatever `ADMIN_EMAIL`/`ADMIN_PASSWORD` you set).
+
+---
+
+## Fixing "Forbidden (403) CSRF verification failed" on the admin login
+
+**Symptom:** on the *very first* deployment, the Django admin login (or any
+form submit) returns `403 Forbidden - CSRF verification failed. Request
+aborted.` This happens after you type credentials and click **Log in**.
+
+**Why:** Django's CSRF middleware rejects a POST when the request's
+`Origin`/`Referer` header is not listed in `CSRF_TRUSTED_ORIGINS`. Behind
+Coolify/Traefik the browser sends `Origin: https://tickets.example.com`, but
+if that origin isn't in Django's allow-list, the login is rejected before it
+ever reaches the database.
+
+**The fix (already built into this repo):**
+
+1. Set `CSRF_TRUSTED_ORIGINS` to your **exact** public origin (with `https://`):
+   ```bash
+   CSRF_TRUSTED_ORIGINS=https://your-app.example.com
+   ```
+2. Alternatively, leave it blank — the settings derive trusted origins
+   automatically from `ALLOWED_HOSTS` (both `https://<host>` and
+   `http://<host>`). For that to work, set `ALLOWED_HOSTS` to your real domain
+   (not `*`).
+
+If you still see 403:
+
+- Make sure you're accessing the site over **HTTPS** (Coolify/Traefik).
+- Make sure the app sees `X-Forwarded-Proto: https` (it does, via
+  `SECURE_PROXY_SSL_HEADER` set by Traefik).
+- Clear cookies/cache and retry — a stale secure CSRF cookie set before your
+  domain was trusted can linger.
+- Check the browser's devtools → Application → Cookies: the `csrftoken`
+  cookie should be present and you should see the `X-CSRFToken` header on the
+  POST.
+
+---
+
 ## Credentials
 
-All seeded users share the password **`pass@123`** (configurable via `--password`).
+The **Campus Administrator** is seeded from the environment at deploy time:
+
+| Account                | Username | Password      | Source                    |
+| ---------------------- | -------- | ------------- | ------------------------- |
+| Campus Admin (Django admin + app) | `admin` (from `ADMIN_EMAIL`) | from `ADMIN_PASSWORD` | env vars |
+
+All other seeded demo users share the password **`pass@123`** (configurable via
+`--password` or the `SEED_PASSWORD` env var):
 
 | Role          | Username         | Department |
 | ------------- | ---------------- | ---------- |
-| Campus Admin  | `admin`          | -          |
 | HOD           | `hod.computer`   | Computer   |
 | Team Lead     | `lead.com.lab`   | Computer   |
 | Team Lead     | `lead.com.academic` | Computer |

@@ -19,7 +19,7 @@ RUN npm run build
 
 
 ############################
-# Stage 2: Django + Nginx
+# Stage 2: Django + React (single container, no Nginx)
 ############################
 FROM python:3.12-slim
 
@@ -30,62 +30,33 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-
-############################
-# System dependencies
-############################
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        nginx \
-        libpq-dev \
-        gcc \
-        curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -f /etc/nginx/sites-enabled/default \
-    && ln -sf /dev/stdout /var/log/nginx/access.log \
-    && ln -sf /dev/stderr /var/log/nginx/error.log
-
-
 ############################
 # Python dependencies
 ############################
 COPY backend/requirements.txt .
-
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
-
 
 ############################
 # Django backend
 ############################
 COPY backend/ .
 
+############################
+# React frontend build
+############################
+COPY --from=frontend-build /app/build /app/frontend_build
 
 ############################
-# React frontend
-############################
-COPY --from=frontend-build /app/build /var/www/html
-
-
-############################
-# Deployment assets
-############################
-COPY deploy/nginx.conf /etc/nginx/conf.d/app.conf
-COPY deploy/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
-
-############################
-# Directories expected by Nginx/Django (must exist for static/media collection)
+# Directories for Django static/media collection
 ############################
 RUN mkdir -p /app/media /app/staticfiles
-
 
 ############################
 # Port
 ############################
-# Only Nginx is public; Gunicorn stays bound to 127.0.0.1:8000 and is not exposed.
-EXPOSE 80
-
+# Gunicorn serves Django (API, admin) and the React build. Expose 8000.
+EXPOSE 8000
 
 ############################
 # Health check
@@ -95,10 +66,9 @@ HEALTHCHECK \
     --timeout=5s \
     --start-period=90s \
     --retries=3 \
-    CMD curl -sf http://localhost/healthz || exit 1
-
+    CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=5).status==200 else 1)"]
 
 ############################
-# Startup
+# Startup: migrate, collect static, seed, then Gunicorn
 ############################
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py ensure_superuser && python manage.py seed --password \"${SEED_PASSWORD:-pass@123}\" && (python manage.py run_sla_scheduler &) && exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers \"${GUNICORN_WORKERS:-3}\" --threads \"${GUNICORN_THREADS:-2}\" --timeout \"${GUNICORN_TIMEOUT:-120}\" --access-logfile - --error-logfile -"]

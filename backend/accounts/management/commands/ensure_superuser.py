@@ -5,7 +5,7 @@ matching superuser exists for the custom AUTH_USER_MODEL ("accounts.User").
 
 Supported environment variables (in priority order):
 
-    ADMIN_EMAIL      / ADMIN_PASSWORD      (primary - used by the entrypoint)
+    ADMIN_EMAIL      / ADMIN_PASSWORD      (primary - used by the startup command)
     ADMIN_USERNAME   (optional username; falls back to the email local part)
     DJANGO_SUPERUSER_EMAIL / DJANGO_SUPERUSER_USERNAME / DJANGO_SUPERUSER_PASSWORD
 
@@ -34,7 +34,7 @@ class Command(BaseCommand):
         return local.strip() or "admin"
 
     def handle(self, *args, **options):
-        # Priority order: ADMIN_* (entrypoint) then legacy DJANGO_SUPERUSER_*.
+        # Priority order: ADMIN_* (startup) then legacy DJANGO_SUPERUSER_*.
         email = os.getenv("ADMIN_EMAIL") or os.getenv("DJANGO_SUPERUSER_EMAIL")
         username = os.getenv("ADMIN_USERNAME") or os.getenv("DJANGO_SUPERUSER_USERNAME")
         password = os.getenv("ADMIN_PASSWORD") or os.getenv("DJANGO_SUPERUSER_PASSWORD")
