@@ -12,6 +12,11 @@ if not SECRET_KEY:
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 _ALLOWED_HOSTS_RAW = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 ALLOWED_HOSTS = [h.strip() for h in _ALLOWED_HOSTS_RAW.split(",") if h.strip()]
+# Always allow loopback so the container HEALTHCHECK can hit 127.0.0.1/localhost
+# regardless of the public domain configured in the environment.
+for _loopback in ("localhost", "127.0.0.1"):
+    if _loopback not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_loopback)
 
 # Trust the HTTPS protocol forwarded by Traefik -> Gunicorn.
 # When DEBUG=False the app runs behind HTTPS, so Django must honour the
