@@ -1,3 +1,5 @@
+import os
+
 from django.core.management.base import BaseCommand
 from accounts.models import Department, SubDepartment, User
 from tickets.models import TicketCategory
@@ -70,14 +72,52 @@ class Command(BaseCommand):
                 defaults={"description": f"{name} team of {dept}"},
             )
 
-        if not User.objects.filter(username='admin').exists():
-            User.objects.create_superuser('admin', 'admin@pulchowk.edu', password)
-            credentials.append(("admin", password))
-        admin = User.objects.get(username='admin')
+        # Campus Admin — never hardcoded. Identity/password come from the
+        # environment (set in Coolify): ADMIN_EMAIL, ADMIN_PASSWORD, and
+        # optionally ADMIN_USERNAME. This is the same account that the
+        # `ensure_superuser` command creates at deploy, so both stay in sync.
+        admin_email = os.getenv("ADMIN_EMAIL")
+        admin_username = os.getenv("ADMIN_USERNAME")
+        admin_password = os.getenv("ADMIN_PASSWORD")
+
+        if admin_email and not admin_username:
+            admin_username = admin_email.split("@", 1)[0].strip() or "admin"
+        admin_username = admin_username or "admin"
+        backend_password = options["password"]
+
+        admin = None
+        if admin_email:
+            admin = User.objects.filter(email__iexact=admin_email).first()
+        if admin is None:
+            admin = User.objects.filter(username=admin_username).first()
+
+        if admin is None:
+            admin = User.objects.create_superuser(
+                admin_username,
+                admin_email or "",
+                admin_password or backend_password,
+            )
+            credentials.append((admin_username, admin_password or backend_password))
+            self.stdout.write(self.style.SUCCESS(
+                f"Campus admin '{admin_username}' created"
+            ))
+        else:
+            if admin_email:
+                admin.email = admin_email
+            if not admin.is_superuser:
+                admin.is_superuser = True
+            if not admin.is_staff:
+                admin.is_staff = True
+            admin.save()
+            self.stdout.write(
+                f"Campus admin '{admin_username}' already exists - flags updated"
+            )
+
         admin.role = User.Role.CAMPUS_ADMIN
-        # Keep the seeded admin's password in sync on every run so the
-        # documented credentials always work.
-        admin.set_password(password)
+
+        # Use the env password when present (the same one used at deploy);
+        # fall back to the --password flag only for local/dev seeding.
+        admin.set_password(admin_password or backend_password)
         admin.save()
 
         # (username, first, last, role, department, section, team)

@@ -10,11 +10,15 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("DJANGO_SECRET_KEY environment variable is not set")
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+_ALLOWED_HOSTS_RAW = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+ALLOWED_HOSTS = [h.strip() for h in _ALLOWED_HOSTS_RAW.split(",") if h.strip()]
 
 # Trust the HTTPS protocol forwarded by Traefik -> Nginx -> Gunicorn.
 # When DEBUG=False the app runs behind HTTPS, so Django must honour the
 # X-Forwarded-Proto: https header sent by the reverse proxies.
+# Only trust the header when the reverse proxy actually sets it; this is what
+# makes the Django admin usable behind Coolify/Traefik over HTTPS without
+# CSRF 403 errors.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 if DEBUG:
     SECURE_SSL_REDIRECT = False
@@ -24,6 +28,43 @@ if DEBUG:
 # environment for local HTTPS-proxied setups if ever needed.
 CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", str(not DEBUG).lower()) == "true"
 SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", str(not DEBUG).lower()) == "true"
+
+# --- CSRF / Origin handling ---------------------------------------------
+# This is the critical setting for Django admin behind a reverse proxy.
+# Django's CSRF middleware rejects a POST when the request's Origin/Referer
+# header does not match an entry in CSRF_TRUSTED_ORIGINS. Behind Coolify the
+# browser sends "https://<your-domain>", so that origin MUST be listed here
+# or every login POST (and any form submit) fails with
+# "CSRF verification failed (403)".
+#
+# It can be set explicitly via the CSRF_TRUSTED_ORIGINS env var (comma
+# separated, e.g. "https://tickets.example.com,https://staging.example.com").
+# As a convenience fallback we auto-derive "https://<host>" for every host in
+# ALLOWED_HOSTS (excluding "*"), so a plain Coolify deployment with a real
+# domain works out of the box.
+_CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()
+]
+if not _CSRF_TRUSTED_ORIGINS:
+    # Derive "https://<host>" (and "http://<host>" for plain-HTTP setups)
+    # from every explicit host in ALLOWED_HOSTS. The "*" wildcard can't be
+    # trusted, so it is skipped - in that case set CSRF_TRUSTED_ORIGINS
+    # explicitly in your Coolify environment.
+    for host in ALLOWED_HOSTS:
+        if host and host != "*":
+            _CSRF_TRUSTED_ORIGINS.append(f"https://{host}")
+            _CSRF_TRUSTED_ORIGINS.append(f"http://{host}")
+CSRF_TRUSTED_ORIGINS = _CSRF_TRUSTED_ORIGINS
+
+if not CSRF_TRUSTED_ORIGINS:
+    import warnings
+    warnings.warn(
+        "No CSRF trusted origins configured. The Django admin login/form "
+        "POSTs will return 403. Set CSRF_TRUSTED_ORIGINS (e.g. "
+        "'https://tickets.example.com') in your environment, or set "
+        "ALLOWED_HOSTS to your actual domain instead of '*'.",
+        stacklevel=2,
+    )
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -103,9 +144,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-CSRF_TRUSTED_ORIGINS = [
-    o for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o
-]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
