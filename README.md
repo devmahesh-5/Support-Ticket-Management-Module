@@ -1,278 +1,213 @@
-# Support Ticket Management Module
-
-Web-based support ticket system for **Pulchowk Engineering Campus** built with **Django REST Framework** + **React** + **PostgreSQL**.
-
-SRS Reference: `SRS_Support_Ticket_System_v1.2.pdf`
-
-## Features
-
-- Ticket creation with categories, priority, file attachments
-- Team-lead routing: every ticket goes to the responsible **team lead** (sub-department), who assigns it to their staff
-- Role-based access: Student, CR, Staff, **Team Lead**, HOD, Campus Admin
-- Chat-like thread view with internal notes for staff
-- In-app + email notifications
-- Multi-level escalation: Staff → Team Lead → HOD → Campus Admin
-- Config-driven SLA engine (**django-apscheduler**) with admin-editable escalation policies & rules
-- Dashboard with stats, SLA deadlines, staff metrics
-- Admin panel: users, teams, categories, escalation rules
-- Full-text search, filtering, sorting
-- CR class-level tickets
-
----
-
-## User Stories — SLA & Escalation Walkthrough
-
-This section walks through the system from each user's point of view: what happens, when it happens, and how. It covers every case a ticket can go through — creation, working, SLA breach, escalation, and resolution.
-
-### The building blocks
-
-**Hierarchy & support levels** — departments contain **teams (sub-departments)** such as *Lab* or *Academic*, each headed by a **team lead**. Every ticket carries an escalation level `0 → 1 → 2 → 3`:
-
-| Level | Status shown | Who | How a ticket gets here |
-| ----- | ------------ | --- | ---------------------- |
-| 0 | *In Progress* | Staff member | Assigned by their team lead |
-| 1 | *Escalated L1* ("With Team Lead") | Team Lead | New-ticket routing, or escalation |
-| 2 | *Escalated L2* ("With HOD") | Department HOD | Escalation policy — manual, or auto on SLA breach |
-| 3 | *Admin Review* | Campus Admin | Final hop past the configured policies — auto on continued breach, or manual |
-
-**Routing rule** — the category maps to a team (e.g. *Lab Equipment* → the department's **Lab** team; *Network / Internet* → CIT's **IT** team). The ticket lands on that team's **lead**, who assigns it to one of their staff members. There is **no automatic staff assignment anywhere**: not for students, and not even for admins creating tickets.
-
-**The SLA clock** — every category has *response* and *resolution* hours. The clock **starts the moment a ticket is created** and **stops when the assigned handler clicks "Start Working"** (status becomes *In Progress*), which also records the first response. While a ticket is *In Progress* it is no longer tracked by the SLA engine.
-
-**Who can do what**
-
-| Action | Student / CR | Staff | Team Lead | HOD | Campus Admin |
-| ------ | :---: | :---: | :---: | :---: | :---: |
-| Create ticket | Yes | Yes | Yes | Yes | Yes |
-| Reply on thread | Yes | Yes | Yes | Yes | Yes |
-| Start Working | — | Yes | Yes | Yes | Yes |
-| Manually escalate | — | — | Yes | Yes | Yes |
-| De-escalate | — | — | — | Yes (if enabled) | Yes (if enabled) |
-| Assign within own team | — | — | Yes | Yes | Yes |
-| Reassign in own department | — | — | — | Yes | Yes |
-| Reassign anywhere | — | — | — | — | Yes |
-| Configure policies & rules | — | — | — | Read-only | Yes |
-
----
-
-### Student (and CR)
-
-**Case 1 — I create a ticket**
-
-- I pick a **category** (e.g. *Lab Equipment*, *Classroom*, *Financial*), a **priority**, and write my description.
-- The system resolves the category's **team** inside my department and assigns the ticket to that team's **team lead** — never directly to a staff member. Even admins who create tickets go through this same route.
-- My SLA clock starts immediately and I get a confirmation.
-
-**Case 2 — No team / no team lead exists for my category**
-
-- The system skips straight to my **department HOD**, who handles or forwards it. (Final fallback: Campus Admin.)
-
-**Case 3 — The assigned staff starts working**
-
-- The ticket shows *In Progress*. The first reply is recorded as the **first response** (my SLA response deadline is considered met), and the SLA clock stops while they work.
-
-**Case 4 — I feel my ticket is stuck**
-
-- Support roles can escalate on my behalf. Each click raises the level one step: `0 → 1 → 2 → 3` — staff → team lead → HOD → **Campus Admin** (*Admin Review*).
-
-**CR note** — a CR's tickets are automatically set to their **class department**, so class-wide issues go to the right department's queue from the start. Everything else works the same as a student.
-
----
-
-### Staff
-
-**Case 1 — A ticket is assigned to me**
-
-- My **team lead** hands me the ticket; I see it in my **Assigned** list with a countdown to the SLA deadlines.
-- At **50%** and **75%** of the SLA time, warning notifications are sent to me **and** my manager, so it doesn't silently slip.
-
-**Case 2 — I start working on it**
-
-- I click **Start Working**. The status becomes *In Progress* and my reply is stamped as the **first response**.
-- From this moment the SLA engine leaves the ticket alone — I'm actively handling it, so it can't be auto-escalated out from under me.
-
-**Case 3 — I miss the response or resolution deadline**
-
-- The ticket's policy triggers. With **auto-escalate ON**, the ticket moves up to the next level (my **team lead**, then beyond) and is reassigned — the notification tells me it left my queue.
-- With **auto-escalate OFF**, the ticket is moved to the **Escalation Queue** until the team lead/HOD reassigns it.
-
----
-
-### Team Lead
-
-**Case 1 — New tickets arrive in my queue**
-
-- Tickets whose category maps to my team land **assigned to me** first. I triage them and use **Assign** to hand each one to a member of **my own team** — the system blocks me from assigning outside my team.
-- My "My team" filter shows everything currently held by my members so I keep oversight.
-
-**Case 2 — A ticket escalates to me**
-
-- Breached tickets owned by my staff come back to me automatically (status *With Team Lead*). If I can't fix it either, escalating raises it to the **HOD**.
-
----
-
-### HOD (Department Head)
-
-**Case 1 — The Escalation Queue has breached tickets (auto-escalate OFF)**
-
-- Breached tickets whose policy has **auto-escalate OFF** land in the **Escalation Queue** inbox on the SLA Dashboard.
-- I open each one and **assign it to the right person** in my department.
-
-**Case 2 — A ticket escalates to me**
-
-- The ticket comes to me directly from a team lead (level raised, status *With HOD*). I see it in my Assigned list and handle it or reassign within my department.
-
-**Case 3 — Someone escalates a ticket all the way to the top**
-
-- At level 3 the ticket becomes *Admin Review* and is assigned to the **Campus Admin**.
-
-**Case 4 — I want to send a ticket back down**
-
-- I can **de-escalate** (if two-way escalation is enabled): the level drops by one — back to the team lead, then to a team member.
-
----
-
-### Campus Admin
-
-**Case 1 — Final fallback**
-
-- If a ticket has no team, no lead **and** no department HOD (e.g. an unstaffed department), routed and breached tickets land with me.
-
-**Case 2 — Configuration**
-
-- I manage everything behind the scenes: users, teams and their **team leads**, categories and their SLA hours, and **escalation policies/rules** (only the campus admin can change these — see below).
-
----
-
-### What happens in each case — quick reference
-
-| Case | What happens | How |
-| ---- | ------------ | --- |
-| New ticket | Routed to the team lead | Category → team → lead (never direct-to-staff) |
-| No team / no lead at creation | Goes to HOD | HOD → Campus Admin |
-| Team lead assigns | Ticket handed down to level 0 | Only to members of their own team |
-| Handler starts working | SLA stopped, first response recorded | Status → *In Progress* |
-| 50% / 75% SLA time | Warnings sent | In-app/email to assigned handler + manager |
-| Breach + policy **auto ON** | Auto-escalate | Level → policy's `to_level`, reassigned at that level; if none, HOD |
-| Breach + policy **auto OFF** | Pushed to Escalation Queue | Lead/HOD assigns from SLA Dashboard |
-| Breach persists past the last policy | Keeps auto-escalating | One hop per engine pass: team lead → HOD → Campus Admin (*Admin Review*) |
-| Manual escalation | Level +1 each click | `0 → 1 → 2 → 3`, ends at Campus Admin |
-| De-escalation | Level −1 | HOD/admin only, back down the chain |
-
-### The full journey of a breached ticket (step by step)
-
-1. Student creates a ticket → routed to the **Lab team lead**, SLA clock starts.
-2. The lead assigns it to a lab staff member; warnings at 50% and 75% go to them and the manager.
-3. Deadline passes with no first response → the policy matches (department/category/priority):
-   - **auto ON** → ticket raised to the policy's target level (assigned there; fallback HOD).
-   - **auto OFF** → ticket moved to the Escalation Queue.
-4. If the SLA **stays** breached, every engine pass advances the ticket one more hop up the chain — team lead → HOD → Campus Admin — until *Admin Review* (level 3). Each step is logged once (`auto:escalated:N`) so the engine never double-fires on the same level.
-5. Every action (policy applied, warning sent, breach, escalation, reassignment) is written to the ticket's **audit trail**, so the full history is visible.
-6. Whoever ends up with the ticket clicks **Start Working**, replies (first response recorded), and works it to resolution.
-
-### How escalation is configured (admin)
-
-Escalation is **policy-driven**, not hardcoded. Each **Escalation Policy** sets:
-
-- **Scope** — which department / category / priority it applies to (the most specific match wins)
-- **From level → to level** — handler levels `0=Staff, 1=Team Lead, 2=HOD, 3=Campus Admin`; create any chain you need (e.g. `0→1`, `1→2`, `2→3`)
-- **Auto-escalate** — ON: auto-assign on breach; OFF: push to the Escalation Queue
-- **Delay** — how long after the breach before it triggers (`escalation_delay_minutes`)
-- **Warnings** — 50% / 75% (or custom) thresholds for the assigned handler and manager
-
-Optional **Escalation Rules** (IF conditions / THEN actions) add extra triggers, e.g. escalate on no-activity hours, bump priority, notify, or assign a specific user or level. There is no cap on the number of policies — build the exact chain your organization needs.
-
-Only the **Campus Admin** can create/edit/delete policies and rules (HODs and staff have read access).
-
-The only hardcoded behavior is *who* receives the ticket at each level: the team's lead (level 1), least-busy member of the ticket's team (level 0), the department HOD (level 2), then the Campus Admin (level 3) — and the one hardcoded escalation step: once a ticket has exhausted its configured policies, a still-breached ticket keeps stepping up automatically until it reaches the **Campus Admin** (*Admin Review*).
-
----
-
-## Step-by-Step Setup
+# Support Ticket System 
+## Live : `https://support-ticket-management-module.itclub.asmitphuyal.com.np/`
+Support Ticket System is a web application for submitting, assigning, tracking,
+and escalating support requests at Pulchowk Engineering Campus. It has a Django
+REST API and admin site, a React web interface, PostgreSQL storage, and an SLA
+engine for deadline monitoring and escalation.
+
+## What the system does
+
+- Students and class representatives submit support tickets with a category,
+  priority, description, and optional attachments.
+- Support staff communicate with requesters through a ticket conversation.
+- Team leads assign work to staff in their own team.
+- HODs manage support work in their department.
+- Campus administrators manage the whole system and its configuration.
+- Tickets have an audit trail, notifications, status history, and SLA dates.
+- Tickets can be searched, filtered, sorted, reported on, and exported by
+  authorized users.
+
+## Roles
+
+| Role | Main responsibilities |
+| --- | --- |
+| Student | Create tickets, follow replies, add information, and close own tickets. |
+| CR (Class Representative) | Do everything a student can do, including class-level requests. |
+| Staff | Work assigned tickets, reply, change status, and escalate when permitted. |
+| Team Lead | Triage the team queue and assign tickets to members of the same team. |
+| HOD / Department Admin | Manage department work, users, teams, and department assignments. |
+| Campus Admin | Manage all users, departments, teams, categories, policies, rules, and reports. |
+
+## How routing works
+
+Routing is based on the requester's department and the selected team
+(sub-department). The category controls the type of request and its SLA, but it
+does not select the team.
+
+1. A requester selects a team while creating a ticket.
+2. The ticket is initially assigned to that team's lead.
+3. The team lead assigns it to a member of the same team.
+4. If the team or team lead is unavailable, the ticket falls back to the
+   department HOD and, finally, the Campus Admin.
+
+## Ticket lifecycle
+
+The normal workflow is:
+
+1. **Open** - the requester has submitted the ticket and it is waiting for
+   handling.
+2. **In Progress** - the assigned handler has started work.
+3. **Resolved** - the handler has completed the work.
+4. **Closed** - the requester or an authorized support user has finished the
+   ticket.
+
+Tickets can also be reopened when more work is needed. Support users may see
+additional escalation states such as **Escalated L1**, **Escalated L2**, and
+**Admin Review**.
+
+## SLA and escalation
+
+Each category has response and resolution hours. The SLA engine monitors active
+tickets and records warnings, breaches, and escalation history. The scheduler
+must be running for automatic monitoring.
+
+The escalation levels are:
+
+| Level | Handler |
+| --- | --- |
+| 0 | Staff member |
+| 1 | Team Lead |
+| 2 | Department HOD |
+| 3 | Campus Admin |
+
+When a policy matches a breached ticket, it either moves the ticket to the
+configured next level or places it in the fixed Escalation Queue when automatic
+escalation is disabled. Manual escalation follows the same support hierarchy.
+Authorized HODs and Campus Admins can de-escalate when the configured workflow
+allows it.
+
+## Using the web application
+
+Open the frontend at `http://localhost:3000` during local development and `https://support-ticket-management-module.itclub.asmitphuyal.com.np/`. After
+login, the main navigation contains the following areas:
+
+| Screen | Use |
+| --- | --- |
+| Dashboard | View ticket counts, workload, and SLA information available to your role. |
+| Tickets | Search, filter, sort, and open tickets visible to you. |
+| New Ticket | Submit a request and add an attachment. |
+| Ticket details | Read the conversation, reply, update status, assign, or escalate when allowed. |
+| Notifications | Read system notifications and jump to related tickets. |
+| Admin | Manage users and organizational data when authorized. |
+| Escalation Dashboard | Review SLA status, breaches, and the escalation queue. |
+| Escalation Policies | Configure policies and rules as Campus Admin. |
+
+### Requester workflow
+
+1. Sign in.
+2. Select **New Ticket**.
+3. Choose the department/team, category, priority, and write a useful title
+   and description.
+4. Add an attachment if it helps explain the issue.
+5. Submit the ticket and use its detail page to follow replies and status
+   changes.
+6. Reply with additional information when requested. Close the ticket when the
+   issue is resolved.
+
+### Staff workflow
+
+1. Open the assigned ticket from **Tickets**.
+2. Select **Start Working** or change the status to begin handling it.
+3. Reply in the conversation and record meaningful progress.
+4. Resolve or reopen the ticket as appropriate.
+5. Escalate it when it needs a higher support level and your role has access.
+
+### Team lead workflow
+
+1. Review new tickets assigned to your team.
+2. Check the category, priority, description, and requester details.
+3. Assign the ticket to an available member of your own team.
+4. Monitor team workload and take ownership of tickets that need lead-level
+   attention.
+
+### HOD and Campus Admin workflow
+
+HODs can manage the users, teams, assignments, and escalated work in their own
+department. Campus Admins can manage all departments and users, configure
+categories and SLAs, review reports and exports, and maintain escalation
+policies and rules.
+
+## Local development setup
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- PostgreSQL running (verify: `pg_isready`)
+- Python 3.10 or newer
+- Node.js 18 or newer
+- PostgreSQL 14 or newer
+- npm
 
-### Step 1: Database Setup
+### 1. Create a PostgreSQL database
 
-PostgreSQL is already running. Create the schema:
+Create a database and, if required by your PostgreSQL setup, the schema used by
+the application:
 
 ```bash
-psql -U mahes -d minor_project -c "CREATE SCHEMA IF NOT EXISTS ticket_system;"
+createdb support_ticket
+psql -d support_ticket -c "CREATE SCHEMA IF NOT EXISTS ticket_system;"
 ```
 
-### Step 2: Backend Setup
+Set the connection values before starting Django. The application reads these
+variables from the environment or a `.env` file in `backend/`:
 
 ```bash
-cd backend
+export DJANGO_SECRET_KEY='replace-with-a-long-random-value'
+export DB_NAME='support_ticket'
+export DB_USER='postgres'
+export DB_PASSWORD='your-local-password'
+export DB_HOST='localhost'
+export DB_PORT='5432'
+export DEBUG='true'
 ```
 
-Activate virtual environment (choose one):
+### 2. Install and migrate the backend
+
+From the repository root:
 
 ```bash
-# If venv already exists:
-source ../venv/bin/activate
-
-# Or create new one:
 python -m venv venv
 source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run database migrations:
-
-```bash
+pip install -r backend/requirements.txt
+cd backend
 python manage.py migrate
 ```
 
-### Step 3: Seed Data
+### 3. Seed development data
 
-Run this to create the departments, categories, teams, the **Campus Admin**,
-HODs, **team leads + teams**, staff members, and students:
+The seed command creates departments, teams, categories, a campus admin, HODs,
+team leads, staff, students, and a CR. It is safe to run again when setting up
+an existing development database.
 
 ```bash
-python manage.py seed
+python manage.py seed --password 'choose-a-development-password'
 ```
 
-The Campus Administrator is the account that owns/adminers the system. To keep
-credentials out of the codebase, seed it from the environment:
+The seeded non-admin users use the password passed to `--password`. For a
+campus admin, set credentials explicitly instead of relying on a shared demo
+password:
 
 ```bash
-export ADMIN_EMAIL=admin@gmail.com
-export ADMIN_PASSWORD=pass@321      # or ADMIN_USERNAME=admin
-python manage.py seed
+export ADMIN_USERNAME='admin'
+export ADMIN_EMAIL='admin@example.test'
+export ADMIN_PASSWORD='choose-a-strong-password'
+python manage.py seed --password 'choose-a-development-password'
 ```
 
-If `ADMIN_EMAIL` / `ADMIN_PASSWORD` are not set, the seed still creates a
-`admin` account using the `--password` flag (default `pass@123`).
+Do not use development credentials in a production deployment.
 
-Every **other** seeded user gets the common demo password **`pass@123`**
-(override with `python manage.py seed --password <pw>`).
+### 4. Start the backend
 
-The seed creates teams (Lab / Academic per academic department, plus specialty
-teams for CIT/FIN/ACA/LIB/FAC) with a team lead on each.
-
-### Step 4: Run Backend Server
+In the `backend/` directory:
 
 ```bash
-cd backend
-source ../venv/bin/activate
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Backend API will be available at **http://localhost:8000/api/**
+The API is available at `http://localhost:8000/api/` and Django Admin is at
+`http://localhost:8000/admin/`.
 
-### Step 5: Run the SLA Engine Scheduler (separate terminal)
+### 5. Start the SLA scheduler
 
-The SLA deadline check engine runs on **django-apscheduler** in its own process:
+Run this in a second terminal with the virtual environment active:
 
 ```bash
 cd backend
@@ -280,13 +215,17 @@ source ../venv/bin/activate
 python manage.py run_sla_scheduler
 ```
 
-- The tick interval is configurable via `SLA_ENGINE_INTERVAL_SECONDS` (default 60s).
-- Jobs are persisted in the DB (django_apscheduler tables); a slow pass never overlaps the next one (`max_instances=1`, `coalesce=True`).
-- For one-off/debug passes you can still run `python manage.py run_sla_engine --ticket <pk>` or use cron with that command.
+The default interval is 60 seconds. Change it with
+`SLA_ENGINE_INTERVAL_SECONDS`. For a one-off evaluation pass, use:
 
-> Run the scheduler as its own process (not inside gunicorn workers) so multiple web workers can't double-fire the engine.
+```bash
+python manage.py run_sla_engine
+python manage.py run_sla_engine --ticket 123
+```
 
-### Step 6: Run Frontend (separate terminal)
+### 6. Start the frontend
+
+In a third terminal:
 
 ```bash
 cd frontend
@@ -294,198 +233,92 @@ npm install
 npm start
 ```
 
-Frontend UI will be available at **http://localhost:3000**
+The React application opens at `http://localhost:3000`. Its development proxy
+forwards API requests to `http://localhost:8000`.
 
----
+## Production deployment with Docker
 
-## Running Tests
-
-```bash
-# From the project root - uses a throwaway SQLite DB (no CREATEDB privilege needed)
-./venv/bin/python backend/manage.py test tickets escalations accounts --settings=config.test_settings
-```
-
----
-
-## Deploying on Coolify (production)
-
-The included `Dockerfile` builds the whole app in one step: React frontend
-**and** Django backend (API, admin and SPA) are all served by a single Gunicorn
-container on port `8000`. No Nginx, no separate entrypoint script. Traefik
-(Coolify's proxy) terminates TLS and forwards to Gunicorn.
-
-### 1. Add a "Dockerfile" application in Coolify
-
-1. **Sources** → add your Git repo (with this `Dockerfile` at the root).
-2. Set the **Build Pack** to `Dockerfile` (the repo's root `Dockerfile`).
-3. Set a **Ports Exposes** value of `8000`.
-4. Add a **Domain** (e.g. `tickets.example.com`). Coolify will route HTTPS
-   traffic to the container on port 8000 and set `X-Forwarded-Proto: https`.
-
-### 2. Required environment variables
-
-Add these under the app's **Environment Variables** (Storable env so they
-persist across deployments). Point them at a **PostgreSQL database** you add
-as a separate resource (see next step).
+The root `Dockerfile` builds the React application and runs it with Django and
+Gunicorn in one container on port `8000`. Configure these values in the
+deployment environment:
 
 ```bash
-# Core Django
-DJANGO_SECRET_KEY=change-me-to-a-long-random-string
+DJANGO_SECRET_KEY=long-random-production-secret
 DEBUG=false
-DJANGO_ALLOWED_HOSTS=tickets.example.com          # your real domain
-
-# Database (match your Coolify Postgres service)
-DB_NAME=support_ticket
-DB_USER=<db user>
-DB_PASSWORD=<db password>
-DB_HOST=<postgres service host>, e.g. postgres
-DB_PORT=5432
-
-# CSRF / admin login fix (IMPORTANT - see below)
+ALLOWED_HOSTS=tickets.example.com
 CSRF_TRUSTED_ORIGINS=https://tickets.example.com
-
-# Admin user seeded on every deploy (idempotent)
-ADMIN_EMAIL=admin@gmail.com
-ADMIN_PASSWORD=pass@321
-ADMIN_USERNAME=admin                          # optional; defaults to email local-part
-
-# Optional
-ALLOWED_HOSTS=                                # prefer DJANGO_ALLOWED_HOSTS
-GUNICORN_WORKERS=3                            # default 3
-GUNICORN_THREADS=2                            # default 2
-SEED_PASSWORD=pass@123                        # demo password for role users (not the admin)
+DB_NAME=support_ticket
+DB_USER=your-db-user
+DB_PASSWORD=your-db-password
+DB_HOST=your-postgres-host
+DB_PORT=5432
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=strong-production-password
+SEED_PASSWORD=strong-seed-password
 ```
 
-> **Note:** the settings read `ALLOWED_HOSTS` (also aliased by `DJANGO_ALLOWED_HOSTS`).
-> Set it to your **actual domain**, not `*`, so CSRF origins can be derived.
+The container startup performs migrations, collects static files, ensures the
+superuser exists, seeds the base data, starts the SLA scheduler, and starts
+Gunicorn. Use a managed PostgreSQL database and persistent storage for media
+uploads. Set `ALLOWED_HOSTS` to the real domain; do not use `*` in production.
 
-### 3. Add a Postgres database resource
+The health check endpoint is `GET /healthz/` and returns `ok` when the service
+is running.
 
-Use Coolify's **Databases → New** to create a **PostgreSQL** service, then put
-its host/user/password into the app's env vars above. The migration step in the
-   container's startup command will create all tables automatically.
+## API overview
 
-### 4. Deploy
+The API is session-authenticated. The main route groups are:
 
-Hit **Deploy**. The container's startup command runs, in order:
+| Route | Purpose |
+| --- | --- |
+| `/api/auth/` | Login, logout, current user, users, departments, and teams. |
+| `/api/tickets/` | Ticket creation, lists, details, messages, attachments, status, assignment, and escalation. |
+| `/api/notifications/` | Notifications, unread counts, and the notification stream. |
+| `/api/escalations/` | Policies, rules, SLA dashboard, and escalation data. |
 
-1. `python manage.py migrate` (creates the schema — the DB must be
-   reachable before the app starts).
-2. Collect static files.
-3. Seed the admin user from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (via
-   `ensure_superuser`, idempotent — safe on redeploys).
-4. Seed the role data (departments, teams, categories, HODs, team leads,
-   staff, students) via `seed`. The Campus Administrator in that seed is the
-   same `ADMIN_EMAIL` / `ADMIN_PASSWORD` account — no hardcoded credentials.
-5. Start the SLA scheduler + Gunicorn (serving Django, admin and React).
+Useful endpoints include:
 
-### 5. Confirm it's up
-
-- Open your domain → the React app loads.
-- `GET <domain>/healthz` returns `ok`.
-- Django admin is at `<domain>/admin/` — log in with `admin@gmail.com` /
-  `pass@321` (or whatever `ADMIN_EMAIL`/`ADMIN_PASSWORD` you set).
-
----
-
-## Fixing "Forbidden (403) CSRF verification failed" on the admin login
-
-**Symptom:** on the *very first* deployment, the Django admin login (or any
-form submit) returns `403 Forbidden - CSRF verification failed. Request
-aborted.` This happens after you type credentials and click **Log in**.
-
-**Why:** Django's CSRF middleware rejects a POST when the request's
-`Origin`/`Referer` header is not listed in `CSRF_TRUSTED_ORIGINS`. Behind
-Coolify/Traefik the browser sends `Origin: https://tickets.example.com`, but
-if that origin isn't in Django's allow-list, the login is rejected before it
-ever reaches the database.
-
-**The fix (already built into this repo):**
-
-1. Set `CSRF_TRUSTED_ORIGINS` to your **exact** public origin (with `https://`):
-   ```bash
-   CSRF_TRUSTED_ORIGINS=https://your-app.example.com
-   ```
-2. Alternatively, leave it blank — the settings derive trusted origins
-   automatically from `ALLOWED_HOSTS` (both `https://<host>` and
-   `http://<host>`). For that to work, set `ALLOWED_HOSTS` to your real domain
-   (not `*`).
-
-If you still see 403:
-
-- Make sure you're accessing the site over **HTTPS** (Coolify/Traefik).
-- Make sure the app sees `X-Forwarded-Proto: https` (it does, via
-  `SECURE_PROXY_SSL_HEADER` set by Traefik).
-- Clear cookies/cache and retry — a stale secure CSRF cookie set before your
-  domain was trusted can linger.
-- Check the browser's devtools → Application → Cookies: the `csrftoken`
-  cookie should be present and you should see the `X-CSRFToken` header on the
-  POST.
-
----
-
-## Credentials
-
-The **Campus Administrator** is seeded from the environment at deploy time:
-
-| Account                | Username | Password      | Source                    |
-| ---------------------- | -------- | ------------- | ------------------------- |
-| Campus Admin (Django admin + app) | `admin` (from `ADMIN_EMAIL`) | from `ADMIN_PASSWORD` | env vars |
-
-All other seeded demo users share the password **`pass@123`** (configurable via
-`--password` or the `SEED_PASSWORD` env var):
-
-| Role          | Username         | Department |
-| ------------- | ---------------- | ---------- |
-| HOD           | `hod.computer`   | Computer   |
-| Team Lead     | `lead.com.lab`   | Computer   |
-| Team Lead     | `lead.com.academic` | Computer |
-| Team Lead     | `lead.cit.it`    | IT Support |
-| Staff         | `staff.com1`     | Computer   |
-| Staff         | `staff.cit1`     | IT Support |
-| CR            | `080bct010`      | Computer   |
-| Student       | `080bct045`      | Computer   |
-
----
-
-## Key API Endpoints
-
-| Method | Endpoint                             | Description        |
-| ------ | ------------------------------------ | ------------------ |
-| POST   | `/api/auth/login/`                   | Login              |
-| GET    | `/api/auth/me/`                      | Current user       |
-| GET    | `/api/auth/users/team_members/`      | Members of my team(s) |
-| GET/POST | `/api/auth/teams/`                 | Manage teams (sub-departments) |
-| GET    | `/api/tickets/`                      | List tickets       |
-| POST   | `/api/tickets/`                      | Create ticket (routes to team lead) |
-| GET    | `/api/tickets/{id}/`                 | Ticket detail      |
-| POST   | `/api/tickets/{id}/add_message/`     | Add reply/note     |
-| POST   | `/api/tickets/{id}/change_status/`   | Change status      |
-| POST   | `/api/tickets/{id}/reassign/`        | Reassign (role-scoped) |
-| POST   | `/api/tickets/{id}/escalate/`        | Escalate           |
-| GET    | `/api/tickets/dashboard/`            | Dashboard          |
-| GET    | `/api/tickets/stats/`                | Statistics         |
-| GET    | `/api/notifications/`                | Notifications      |
-| GET/POST | `/api/escalations/policies/`       | Escalation policies (campus admin writes) |
-
----
-
-## Project Structure
-
+```text
+POST /api/auth/login/
+GET  /api/auth/me/
+GET  /api/tickets/
+POST /api/tickets/
+GET  /api/tickets/{id}/
+POST /api/tickets/{id}/add_message/
+POST /api/tickets/{id}/upload_attachment/
+POST /api/tickets/{id}/change_status/
+POST /api/tickets/{id}/reassign/
+POST /api/tickets/{id}/escalate/
+GET  /api/tickets/dashboard/
+GET  /api/notifications/
+GET  /api/escalations/dashboard/dashboard/
 ```
-├── backend/
-│   ├── config/           # Django settings, urls, wsgi, test settings
-│   ├── accounts/         # Custom User model, teams (sub-departments), auth
-│   ├── tickets/          # Core: models, views, routing, serializers
-│   ├── notifications/    # Notifications & templates
-│   ├── escalations/      # SLA engine, policies, apscheduler scheduler
-│   └── manage.py
-├── frontend/
-│   ├── src/
-│   │   ├── api/          # Axios API client
-│   │   ├── components/   # Dashboard, TicketList, TicketDetail, escalations UI
-│   │   └── contexts/     # Auth context
-│   └── public/
-├── venv/                 # Python virtual environment
-└── README.md
+
+Permissions are enforced by the backend, so a user only sees and changes data
+allowed by their role and department.
+
+## Testing
+
+The test settings use a throwaway SQLite database, so local tests do not need a
+separate test PostgreSQL database:
+
+```bash
+python backend/manage.py test accounts tickets escalations \
+  --settings=config.test_settings
+```
+
+## Project structure
+
+```text
+backend/
+  accounts/       Users, roles, departments, teams, and authentication
+  tickets/        Tickets, messages, attachments, routing, and reporting
+  notifications/  In-app notifications and streaming
+  escalations/    SLA policies, scheduler, escalation services, and history
+  config/         Django settings, URLs, authentication, and deployment config
+frontend/
+  src/            React application, pages, components, API client, and auth
+Dockerfile        Production image for the frontend and backend
+README.md         Project documentation and user manual
 ```
